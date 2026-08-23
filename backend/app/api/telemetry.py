@@ -79,31 +79,114 @@ def get_hardware_diagnostics() -> Dict[str, Any]:
                             pass
 
                     status_file = bat / "status"
+                    raw_status = "Unknown"
                     if status_file.exists():
-                        raw_status = status_file.read_text().strip()
-                        is_plugged = raw_status.lower() in ["charging", "full", "not charging"]
-                        battery_info["power_plugged"] = is_plugged
-                        if raw_status.lower() == "full" or (battery_info["percent"] and battery_info["percent"] >= 99):
-                            battery_info["status"] = "AC Connected (100% Fully Charged)"
+                        try:
+                            raw_status = status_file.read_text().strip()
+                        except Exception:
+                            pass
+
+                    is_plugged = raw_status.lower() in ["charging", "full", "not charging"]
+                    battery_info["power_plugged"] = is_plugged
+
+                    time_to_full_file = bat / "time_to_full_now"
+                    time_to_empty_file = bat / "time_to_empty_now"
+                    time_left_str = None
+
+                    if is_plugged and time_to_full_file.exists():
+                        try:
+                            ttf_secs = int(time_to_full_file.read_text().strip())
+                            if ttf_secs > 0:
+                                hrs = ttf_secs // 3600
+                                mins = (ttf_secs % 3600) // 60
+                                time_left_str = f"{hrs}h {mins}m until full" if hrs > 0 else f"{mins}m until full"
+                        except Exception:
+                            pass
+
+                    if not is_plugged and time_to_empty_file.exists():
+                        try:
+                            tte_secs = int(time_to_empty_file.read_text().strip())
+                            if tte_secs > 0:
+                                hrs = tte_secs // 3600
+                                mins = (tte_secs % 3600) // 60
+                                time_left_str = f"{hrs}h {mins}m remaining" if hrs > 0 else f"{mins}m remaining"
+                        except Exception:
+                            pass
+
+                    pwr_file = bat / "power_now"
+                    enow_file = bat / "energy_now"
+                    efull_file = bat / "energy_full"
+                    if pwr_file.exists():
+                        try:
+                            pnow = float(pwr_file.read_text().strip())
+                            battery_info["power_w"] = round(pnow / 1_000_000.0, 2)
+                            if not time_left_str and pnow > 1000 and enow_file.exists() and efull_file.exists():
+                                enow = float(enow_file.read_text().strip())
+                                efull = float(efull_file.read_text().strip())
+                                if is_plugged and raw_status.lower() == "charging" and efull > enow:
+                                    t_hours = (efull - enow) / pnow
+                                    hrs = int(t_hours)
+                                    mins = int((t_hours - hrs) * 60)
+                                    time_left_str = f"~{hrs}h {mins}m until full" if hrs > 0 else f"~{mins}m until full"
+                                elif not is_plugged and enow > 0:
+                                    t_hours = enow / pnow
+                                    hrs = int(t_hours)
+                                    mins = int((t_hours - hrs) * 60)
+                                    time_left_str = f"~{hrs}h {mins}m remaining" if hrs > 0 else f"~{mins}m remaining"
+                        except Exception:
+                            pass
+
+                    cur_file = bat / "current_now"
+                    cnow_file = bat / "charge_now"
+                    cfull_file = bat / "charge_full"
+                    if not time_left_str and cur_file.exists() and cnow_file.exists() and cfull_file.exists():
+                        try:
+                            c_cur = float(cur_file.read_text().strip())
+                            cnow = float(cnow_file.read_text().strip())
+                            cfull = float(cfull_file.read_text().strip())
+                            if c_cur > 1000:
+                                if is_plugged and raw_status.lower() == "charging" and cfull > cnow:
+                                    t_hours = (cfull - cnow) / c_cur
+                                    hrs = int(t_hours)
+                                    mins = int((t_hours - hrs) * 60)
+                                    time_left_str = f"~{hrs}h {mins}m until full" if hrs > 0 else f"~{mins}m until full"
+                                elif not is_plugged and cnow > 0:
+                                    t_hours = cnow / c_cur
+                                    hrs = int(t_hours)
+                                    mins = int((t_hours - hrs) * 60)
+                                    time_left_str = f"~{hrs}h {mins}m remaining" if hrs > 0 else f"~{mins}m remaining"
+                        except Exception:
+                            pass
+
+                    pct = battery_info.get("percent")
+                    if is_plugged:
+                        if raw_status.lower() == "full" or (pct is not None and pct >= 98):
+                            status_text = "AC Connected (100% Fully Charged)"
+                            time_left_str = "Fully Charged"
+                        elif raw_status.lower() == "not charging" or (pct is not None and pct >= 80 and not time_left_str):
+                            status_text = f"AC Connected (Optimal {pct}%)" if pct else "AC Connected (Maintaining)"
+                            time_left_str = "Maintaining Level"
                         elif raw_status.lower() == "charging":
-                            battery_info["status"] = "AC Connected (Charging)"
-                        elif raw_status.lower() == "discharging":
-                            battery_info["status"] = f"Discharging on Battery ({battery_info['percent']}%)"
+                            status_text = f"AC Connected (Charging {pct}%)" if pct else "AC Connected (Charging)"
+                            if not time_left_str:
+                                time_left_str = "Charging on AC Power"
                         else:
-                            battery_info["status"] = raw_status
-                        battery_info["power_source"] = "AC Power Adapter" if is_plugged else "Internal Battery Power"
+                            status_text = f"AC Connected ({raw_status})"
+                            if not time_left_str:
+                                time_left_str = "AC Connected"
+                    else:
+                        status_text = f"Discharging on Battery ({pct}%)" if pct else "Discharging on Battery"
+                        if not time_left_str:
+                            time_left_str = "On Battery Power"
+
+                    battery_info["status"] = status_text
+                    battery_info["time_left_formatted"] = time_left_str
+                    battery_info["power_source"] = "AC Power Adapter" if is_plugged else "Internal Battery Power"
 
                     volt_file = bat / "voltage_now"
                     if volt_file.exists():
                         try:
                             battery_info["voltage_v"] = round(float(volt_file.read_text().strip()) / 1_000_000.0, 2)
-                        except Exception:
-                            pass
-
-                    pwr_file = bat / "power_now"
-                    if pwr_file.exists():
-                        try:
-                            battery_info["power_w"] = round(float(pwr_file.read_text().strip()) / 1_000_000.0, 2)
                         except Exception:
                             pass
 

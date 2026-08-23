@@ -317,10 +317,15 @@ export const SystemView: React.FC<SystemViewProps> = ({
                 <div className="p-2 rounded-lg bg-[#161616] border border-[#222222] flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-zinc-400 text-[11px]">
                     <Clock className="h-3.5 w-3.5 text-[#3B82F6]" />
-                    <span>{battery.power_plugged ? 'Time to Full' : 'Time Remaining'}</span>
+                    <span>{battery.power_plugged ? 'Power State' : 'Time Remaining'}</span>
                   </div>
                   <span className="font-mono font-bold text-xs text-white">
-                    {battery.time_left_formatted || (battery.percent && battery.percent >= 99 ? 'Fully Charged' : 'Calculating...')}
+                    {battery.time_left_formatted ||
+                      (battery.power_plugged
+                        ? (battery.percent && battery.percent >= 98
+                            ? 'Fully Charged'
+                            : 'AC Connected (Charging)')
+                        : 'On Battery Power')}
                   </span>
                 </div>
 
