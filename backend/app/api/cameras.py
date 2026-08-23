@@ -88,7 +88,7 @@ def scan_hardware():
 
     return {"status": "scan_complete", "cameras": camera_manager.get_available_cameras(), "added": added}
 
-@router.get("/{camera_id}")
+@router.get("/{camera_id:path}")
 def get_camera_info(camera_id: str):
     """Get single camera configuration."""
     cam = get_configured_camera(camera_id)
@@ -96,7 +96,7 @@ def get_camera_info(camera_id: str):
         raise HTTPException(status_code=404, detail="Camera not found")
     return {"camera": cam}
 
-@router.put("/{camera_id}")
+@router.put("/{camera_id:path}")
 def edit_camera(camera_id: str, payload: CameraUpdate):
     """Edit camera name, stream source, resolution, FPS, or zone."""
     cam = update_configured_camera(
@@ -126,13 +126,40 @@ def edit_camera(camera_id: str, payload: CameraUpdate):
 
     return {"status": "success", "camera": cam}
 
-@router.delete("/{camera_id}")
+class CameraDeleteRequest(BaseModel):
+    id: Optional[str] = None
+    device: Optional[str] = None
+    name: Optional[str] = None
+
+@router.post("/delete")
+def remove_camera_post(payload: CameraDeleteRequest):
+    """Delete camera via POST request body."""
+    target = payload.id or payload.device or payload.name
+    if not target:
+        raise HTTPException(status_code=400, detail="Camera identifier required")
+    success = delete_configured_camera(target)
+    camera_manager.remove_worker(target)
+    return {"status": "deleted", "id": target, "success": success}
+
+@router.delete("/{camera_id:path}")
+@router.post("/{camera_id:path}/delete")
 def remove_camera(camera_id: str):
-    """Delete a camera from the system."""
-    success = delete_configured_camera(camera_id)
+    """Delete a camera from the system by ID or path."""
+    clean_id = camera_id.strip()
+    success = delete_configured_camera(clean_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Camera not found")
+        # Also check all configured cameras for match
+        all_cams = list_configured_cameras()
+        for c in all_cams:
+            if (c["id"] == clean_id or
+                c.get("source") == clean_id or
+                c.get("name") == clean_id or
+                str(c.get("source", "")).endswith(clean_id)):
+                delete_configured_camera(c["id"])
+                clean_id = c["id"]
+                success = True
+                break
 
     # Stop worker
-    camera_manager.remove_worker(camera_id)
-    return {"status": "deleted", "id": camera_id}
+    camera_manager.remove_worker(clean_id)
+    return {"status": "deleted", "id": clean_id}

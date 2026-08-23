@@ -435,9 +435,19 @@ def update_configured_camera(
         return get_configured_camera(camera_id)
 
 def delete_configured_camera(camera_id: str) -> bool:
+    clean_id = str(camera_id).strip()
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM cameras WHERE id = ?", (str(camera_id),))
+        cursor.execute("""
+            DELETE FROM cameras
+            WHERE id = ? OR source = ? OR name = ?
+               OR id = ? OR source = ?
+               OR source LIKE ?
+        """, (
+            clean_id, clean_id, clean_id,
+            clean_id.replace("/dev/", ""), f"/dev/{clean_id}",
+            f"%{clean_id}%"
+        ))
         conn.commit()
         return cursor.rowcount > 0
 

@@ -459,13 +459,30 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
   const handleDeleteCamera = async (camId: string) => {
     setShowMoreMenu(false);
+    if (!window.confirm(`Are you sure you want to delete camera "${camId}"?`)) return;
     try {
-      const res = await fetch(`/api/cameras/${camId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/cameras/${encodeURIComponent(camId)}`, { method: 'DELETE' });
       if (res.ok) {
+        if (onShowToast) onShowToast(`Camera deleted`);
+        if (onRefreshDevices) onRefreshDevices();
         onReconnect();
+      } else {
+        const postRes = await fetch('/api/cameras/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: camId, device: camId }),
+        });
+        if (postRes.ok) {
+          if (onShowToast) onShowToast(`Camera deleted`);
+          if (onRefreshDevices) onRefreshDevices();
+          onReconnect();
+        } else {
+          if (onShowToast) onShowToast('Failed to delete camera', true);
+        }
       }
     } catch (e) {
       console.error(e);
+      if (onShowToast) onShowToast('Error deleting camera', true);
     }
   };
 

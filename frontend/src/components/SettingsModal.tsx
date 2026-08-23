@@ -123,10 +123,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     e.stopPropagation();
     if (!window.confirm(`Are you sure you want to delete camera "${cam.name}"?`)) return;
     try {
-      const res = await fetch(`/api/cameras/${cam.device}`, { method: 'DELETE' });
+      const camId = cam.device;
+      const res = await fetch(`/api/cameras/${encodeURIComponent(camId)}`, { method: 'DELETE' });
       if (res.ok) {
         onShowToast(`Camera "${cam.name}" deleted`);
         onRefreshStorageLocation();
+      } else {
+        const postRes = await fetch('/api/cameras/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: camId, device: cam.device, name: cam.name }),
+        });
+        if (postRes.ok) {
+          onShowToast(`Camera "${cam.name}" deleted`);
+          onRefreshStorageLocation();
+        } else {
+          onShowToast('Failed to delete camera', true);
+        }
       }
     } catch {
       onShowToast('Error deleting camera', true);
