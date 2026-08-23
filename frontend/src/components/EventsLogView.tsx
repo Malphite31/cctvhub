@@ -272,71 +272,8 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col gap-2 sm:gap-3 select-none text-xs">
-      {/* 1. Top Header & Action Controls */}
-      <div className="rounded-xl border border-[#222222] bg-[#121212] p-3 sm:p-4 space-y-2.5 sm:space-y-3 shrink-0">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 pb-2 border-b border-[#222222]">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg bg-[#3B82F6]/15 border border-[#3B82F6]/30 text-[#3B82F6] shrink-0">
-              <Bell className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-semibold text-xs sm:text-sm text-white font-sans truncate">
-                Surveillance Audit Trail & Event Logs
-              </h3>
-              <p className="text-[10px] sm:text-[11px] text-zinc-400 font-mono hidden sm:block truncate">
-                Click any log to view details, inspect video/snapshots, download records, or delete items.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 sm:flex items-center gap-1.5 w-full sm:w-auto">
-            {/* Export CSV Button */}
-            <button
-              onClick={handleExportCSV}
-              className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-white border border-[#333] transition-colors text-[11px] font-mono"
-              title="Download CSV log audit trail"
-            >
-              <Download className="h-3 w-3 text-emerald-400" />
-              <span>CSV</span>
-            </button>
-
-            {/* Export JSON Button */}
-            <button
-              onClick={handleExportJSON}
-              className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-white border border-[#333] transition-colors text-[11px] font-mono"
-              title="Download JSON log archive"
-            >
-              <FileJson className="h-3 w-3 text-[#3B82F6]" />
-              <span>JSON</span>
-            </button>
-
-            {/* Clear All Logs Button */}
-            {!isViewer && onClearEvents && (
-              <button
-                onClick={() => setShowClearModal(true)}
-                disabled={events.length === 0}
-                className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-rose-950/60 text-zinc-300 hover:text-rose-300 border border-[#333] hover:border-rose-900/60 transition-colors text-[11px] font-mono disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Clear all logged events"
-              >
-                <Trash2 className="h-3 w-3 text-rose-400" />
-                <span className="hidden sm:inline">Clear All</span>
-                <span className="sm:hidden">Clear</span>
-              </button>
-            )}
-
-            {/* Refresh Button */}
-            <button
-              onClick={onRefresh}
-              className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-white border border-[#333] transition-colors text-[11px] font-mono"
-              title="Refresh log feed"
-            >
-              <RefreshCw className="h-3 w-3 text-[#3B82F6]" />
-              <span>Refresh</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Search & Filter Toolbar */}
+      {/* 1. Top Compact Control Bar */}
+      <div className="rounded-lg border border-[#222222] bg-[#111111] p-2 sm:p-2.5 space-y-2 shrink-0">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
           {/* Search Input */}
           <div className="relative flex-1 min-w-0">
@@ -345,13 +282,13 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by ID, identity, event title, or camera..."
-              className="w-full pl-8 pr-3 py-1.5 bg-[#161616] border border-[#222222] rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#3B82F6] transition-colors font-sans"
+              placeholder="Search by ID, identity, event, or camera..."
+              className="w-full pl-8 pr-3 py-1.5 bg-[#161616] border border-[#262626] rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#3B82F6] transition-colors font-sans"
             />
           </div>
 
           {/* Filter Pills - Horizontal Scroll on Mobile */}
-          <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#161616] border border-[#222222] overflow-x-auto no-scrollbar shrink-0">
+          <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[#161616] border border-[#262626] overflow-x-auto no-scrollbar shrink-0">
             {[
               { id: 'all', label: 'All', count: events.length },
               { id: 'face', label: 'Faces', count: events.filter((e) => (e.event_type || e.type || '').includes('face')).length },
@@ -378,6 +315,48 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
                 </button>
               );
             })}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-1.5 shrink-0 justify-end">
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-zinc-300 hover:text-white border border-[#2a2a2a] transition-colors text-[11px] font-mono"
+              title="Download CSV log"
+            >
+              <Download className="h-3 w-3 text-emerald-400" />
+              <span>CSV</span>
+            </button>
+
+            <button
+              onClick={handleExportJSON}
+              className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-zinc-300 hover:text-white border border-[#2a2a2a] transition-colors text-[11px] font-mono"
+              title="Download JSON log"
+            >
+              <FileJson className="h-3 w-3 text-[#3B82F6]" />
+              <span>JSON</span>
+            </button>
+
+            {!isViewer && onClearEvents && (
+              <button
+                onClick={() => setShowClearModal(true)}
+                disabled={events.length === 0}
+                className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 transition-colors text-[11px] font-mono disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Clear all logged events"
+              >
+                <Trash2 className="h-3 w-3 text-rose-400" />
+                <span>Clear</span>
+              </button>
+            )}
+
+            <button
+              onClick={onRefresh}
+              className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-zinc-300 hover:text-white border border-[#2a2a2a] transition-colors text-[11px] font-mono"
+              title="Refresh log feed"
+            >
+              <RefreshCw className="h-3 w-3 text-[#3B82F6]" />
+              <span>Refresh</span>
+            </button>
           </div>
         </div>
 
