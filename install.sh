@@ -41,12 +41,15 @@ else
     echo ">> [2/6] Node.js is already installed."
 fi
 
-# 3. Copy/Clone Application into /opt/cctv-hub if not already there
+# 3. Copy/Clone Application into /opt/cctv-hub
 echo ">> [3/6] Setting up application directory at $INSTALL_DIR..."
-mkdir -p "$INSTALL_DIR"
-if [ "$CURRENT_DIR" != "$INSTALL_DIR" ]; then
+if [ -d "$CURRENT_DIR/backend" ] && [ "$CURRENT_DIR" != "$INSTALL_DIR" ]; then
+    mkdir -p "$INSTALL_DIR"
     cp -ru "$CURRENT_DIR"/* "$INSTALL_DIR"/ || true
     cp -ru "$CURRENT_DIR"/.[!.]* "$INSTALL_DIR"/ 2>/dev/null || true
+elif [ ! -f "$INSTALL_DIR/backend/app/main.py" ]; then
+    echo ">> Cloning repository from GitHub into $INSTALL_DIR..."
+    git clone https://github.com/Malphite31/cctvhub.git "$INSTALL_DIR"
 fi
 
 cd "$INSTALL_DIR"
