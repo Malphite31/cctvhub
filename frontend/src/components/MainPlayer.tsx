@@ -498,7 +498,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
       <div
         className={
           isFloating
-            ? "absolute bottom-3 left-3 right-3 flex items-center justify-between gap-1.5 sm:gap-2 z-50 pointer-events-none select-none"
+            ? "absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5 sm:gap-2 z-30 pointer-events-none select-none overflow-x-auto no-scrollbar"
             : "w-full flex items-center justify-between gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-xl bg-[#111114] border border-[#222226] shadow-lg overflow-x-auto no-scrollbar shrink-0 select-none"
         }
       >
@@ -506,9 +506,10 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
         <div className={`flex items-center gap-1.5 sm:gap-2 shrink-0 ${isFloating ? 'pointer-events-auto' : ''}`}>
           {/* Pause / Play */}
           <button
+            type="button"
             onClick={handleTogglePlay}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs font-medium border transition-colors shrink-0 ${
-              isFloating ? 'bg-black/85 hover:bg-black border-[#333333] backdrop-blur' : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
+              isFloating ? 'bg-black/80 hover:bg-black border-white/20 backdrop-blur-md shadow-lg' : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
             }`}
             title={isPlaying ? 'Pause Feed' : 'Play Feed'}
           >
@@ -518,9 +519,10 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
           {/* Quick Snapshot */}
           <button
+            type="button"
             onClick={onSnapshot}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs font-medium border transition-colors shrink-0 ${
-              isFloating ? 'bg-black/85 hover:bg-black border-[#333333] backdrop-blur' : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
+              isFloating ? 'bg-black/80 hover:bg-black border-white/20 backdrop-blur-md shadow-lg' : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
             }`}
             title="Capture Snapshot"
           >
@@ -530,12 +532,13 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
           {/* Video Record */}
           <button
+            type="button"
             onClick={onToggleRecording}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
               isRecording
-                ? 'bg-rose-600 text-white border-rose-500 animate-pulse'
+                ? 'bg-rose-600 text-white border-rose-500 animate-pulse shadow-lg shadow-rose-900/40'
                 : isFloating
-                ? 'bg-black/85 hover:bg-black text-white border-[#333333] backdrop-blur'
+                ? 'bg-black/80 hover:bg-black text-white border-white/20 backdrop-blur-md shadow-lg'
                 : 'bg-[#18181c] hover:bg-[#222226] text-white border-[#2c2c32]'
             }`}
             title={isRecording ? 'Stop Recording' : 'Start Recording'}
@@ -550,12 +553,13 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
           {/* Select Object / Door to Track button */}
           <button
+            type="button"
             onClick={() => setIsDrawingMode(!isDrawingMode)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
               isDrawingMode
-                ? 'bg-[#3B82F6] text-white border-[#3B82F6] animate-pulse'
+                ? 'bg-[#3B82F6] text-white border-[#3B82F6] animate-pulse shadow-lg'
                 : isFloating
-                ? 'bg-black/85 hover:bg-black text-zinc-300 border-[#333333] backdrop-blur'
+                ? 'bg-black/80 hover:bg-black text-zinc-200 border-white/20 backdrop-blur-md shadow-lg'
                 : 'bg-[#18181c] hover:bg-[#222226] text-zinc-300 border-[#2c2c32]'
             }`}
             title="Select / Draw Object or Door to Track"
@@ -566,12 +570,15 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
           {/* HUD Visibility Toggle */}
           <button
+            type="button"
             onClick={() => handleUpdateTrackerSettings({ enabled: !trackerSettings.enabled })}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
               trackerSettings.enabled
-                ? 'bg-blue-600/20 text-[#3B82F6] border-[#3B82F6]/50 hover:bg-blue-600/30'
+                ? isFloating
+                  ? 'bg-blue-600/30 text-[#3B82F6] border-[#3B82F6]/60 backdrop-blur-md shadow-lg'
+                  : 'bg-blue-600/20 text-[#3B82F6] border-[#3B82F6]/50 hover:bg-blue-600/30'
                 : isFloating
-                ? 'bg-black/85 hover:bg-black text-zinc-400 border-[#333333] backdrop-blur'
+                ? 'bg-black/80 hover:bg-black text-zinc-300 border-white/20 backdrop-blur-md shadow-lg'
                 : 'bg-[#18181c] hover:bg-[#222226] text-zinc-400 border-[#2c2c32]'
             }`}
             title={trackerSettings.enabled ? 'Hide Tracker HUD Overlay' : 'Show Tracker HUD Overlay'}
@@ -582,12 +589,15 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
           {/* Motion Detector Button & Settings */}
           <button
+            type="button"
             onClick={() => setIsMotionModalOpen(true)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
               isMotionDetected
-                ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 hover:bg-amber-500/30'
+                ? isFloating
+                  ? 'bg-amber-500/30 text-amber-300 border-amber-500/60 backdrop-blur-md shadow-lg shadow-amber-500/20'
+                  : 'bg-amber-500/20 text-amber-400 border-amber-500/50 hover:bg-amber-500/30'
                 : isFloating
-                ? 'bg-black/85 hover:bg-black text-zinc-300 border-[#333333] backdrop-blur'
+                ? 'bg-black/80 hover:bg-black text-zinc-200 border-white/20 backdrop-blur-md shadow-lg'
                 : 'bg-[#18181c] hover:bg-[#222226] text-zinc-300 border-[#2c2c32]'
             }`}
             title="Motion Detector & Trigger Actions"
@@ -602,7 +612,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
           {/* Mute / Audio with Volume Button */}
           <div className="relative shrink-0">
             <div className={`flex items-center rounded-lg border overflow-hidden ${
-              isFloating ? 'bg-black/85 border-[#333333] backdrop-blur' : 'bg-[#18181c] border-[#2c2c32]'
+              isFloating ? 'bg-black/80 border-white/20 backdrop-blur-md shadow-lg' : 'bg-[#18181c] border-[#2c2c32]'
             }`}>
               <button
                 type="button"
@@ -617,7 +627,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
               <button
                 type="button"
                 onClick={() => setShowMicMenu(!showMicMenu)}
-                className={`p-1.5 sm:px-2 sm:py-1.5 border-l border-[#333333] hover:bg-white/10 transition-colors ${
+                className={`p-1.5 sm:px-2 sm:py-1.5 border-l border-white/10 hover:bg-white/10 transition-colors ${
                   showMicMenu ? 'bg-[#3B82F6] text-white' : 'text-zinc-400 hover:text-white'
                 }`}
                 title="Audio Device, Level & Volume Settings"
@@ -636,9 +646,9 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
             onClick={handleToggleFitMode}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs font-medium border transition-colors shrink-0 ${
               objectFit === 'cover'
-                ? 'bg-[#3B82F6] border-[#3B82F6]'
+                ? 'bg-[#3B82F6] border-[#3B82F6] shadow-lg'
                 : isFloating
-                ? 'bg-black/85 hover:bg-black border-[#333333] backdrop-blur'
+                ? 'bg-black/80 hover:bg-black border-white/20 backdrop-blur-md shadow-lg'
                 : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
             }`}
             title={objectFit === 'cover' ? 'Display: Fill (16:9 Edge-to-Edge) • Click to Fit' : 'Display: Fit (Original Sensor Ratio) • Click to Fill'}
@@ -653,9 +663,9 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
             onClick={() => setShowAdjustmentsModal(!showAdjustmentsModal)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs font-medium border transition-colors shrink-0 ${
               showAdjustmentsModal || flipH || flipV || rotation !== 0 || zoom > 1.01 || brightness !== 50 || contrast !== 50 || saturation !== 50
-                ? 'bg-[#3B82F6] border-[#3B82F6]'
+                ? 'bg-[#3B82F6] border-[#3B82F6] shadow-lg'
                 : isFloating
-                ? 'bg-black/85 hover:bg-black border-[#333333] backdrop-blur'
+                ? 'bg-black/80 hover:bg-black border-white/20 backdrop-blur-md shadow-lg'
                 : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
             }`}
             title="Camera Adjustments (Flip, Crop, Zoom, Rotate, Color)"
@@ -672,7 +682,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
             type="button"
             onClick={handleToggleFullscreen}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs font-medium border transition-colors shrink-0 ${
-              isFloating ? 'bg-black/85 hover:bg-black border-[#333333] backdrop-blur' : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
+              isFloating ? 'bg-black/80 hover:bg-black border-white/20 backdrop-blur-md shadow-lg' : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
             }`}
             title="Toggle Video Fullscreen"
           >
@@ -1018,8 +1028,12 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
               </div>
             )}
 
-            {/* In Fullscreen Mode: Controls float at the bottom of the video */}
-            {isFullscreen && renderControlsDock(true)}
+            {/* Desktop Overlay (or Fullscreen): Controls float inside at the bottom of the video player */}
+            {hasCameras && (
+              <div className={isFullscreen ? "w-full" : "hidden md:block"}>
+                {renderControlsDock(true)}
+              </div>
+            )}
 
             {/* Floating Exit Button for Fullscreen Mode */}
             {isFullscreen && (
@@ -1036,8 +1050,12 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
         )}
       </div>
 
-      {/* 3. Action Controls Toolbar (Rendered OUTSIDE and below the video on Mobile and Desktop) */}
-      {!isFullscreen && hasCameras && renderControlsDock(false)}
+      {/* 3. Action Controls Toolbar (Rendered OUTSIDE and below the video on Mobile only) */}
+      {!isFullscreen && hasCameras && (
+        <div className="md:hidden w-full">
+          {renderControlsDock(false)}
+        </div>
+      )}
 
       {/* Custom Object Tracker Configuration Modal */}
       <CustomObjectTrackerModal
