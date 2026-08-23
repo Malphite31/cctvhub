@@ -11,7 +11,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 INSTALL_DIR="/opt/cctv-hub"
-CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CURRENT_DIR="$(pwd)"
 
 echo "=========================================================="
 echo "  Installing CCTV Surveillance Hub on Proxmox / Host OS   "
