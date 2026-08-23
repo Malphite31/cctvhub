@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .core.config import settings
-from .api import stream, recordings, telemetry, storage, faces, events, trackers, cameras, auth
+from .api import stream, recordings, telemetry, storage, faces, events, trackers, cameras, auth, motion
 from .services.camera_worker import camera_manager
 from .services.audio_worker import audio_worker
 from .core.database import init_db, list_configured_cameras
@@ -58,6 +58,7 @@ app.include_router(faces.router, prefix="/api/faces", tags=["Face Recognition & 
 app.include_router(events.router, prefix="/api/events", tags=["Surveillance Events"])
 app.include_router(trackers.router, prefix="/api/trackers", tags=["Custom Object & Zone Trackers"])
 app.include_router(cameras.router, prefix="/api/cameras", tags=["Camera Management & Hardware"])
+app.include_router(motion.router, prefix="/api/motion", tags=["Motion Detection & Triggers"])
 
 # Serve frontend build if exists
 FRONTEND_PATHS = [

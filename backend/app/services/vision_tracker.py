@@ -14,6 +14,7 @@ from ..core.database import (
     list_custom_trackers,
     update_tracker_state
 )
+from .motion_detector import motion_detector
 
 logger = logging.getLogger("vision_tracker")
 
@@ -347,7 +348,50 @@ class VisionTracker:
                 "color": user_color_hex
             })
 
+        # 3. Motion Detection & Automated Triggers
+        is_motion, motion_pct, motion_boxes = motion_detector.process_motion(frame, camera_id=cam_str)
+        if is_motion:
+            cfg = motion_detector.get_camera_settings(cam_str)
+            if cfg.get("highlight_boxes", True):
+                for (mx, my, mw, mh) in motion_boxes:
+                    self._render_motion_box_hud(annotated_frame, mx, my, mw, mh, motion_pct)
+                    active_detections.append({
+                        "id": f"motion_{mx}_{my}",
+                        "name": f"Motion ({motion_pct}%)",
+                        "action_label": f"Trigger: {cfg.get('action', 'both').upper()}",
+                        "trigger_type": "motion",
+                        "state": "ACTIVE",
+                        "is_triggered": True,
+                        "x": int((mx / w) * 100),
+                        "y": int((my / h) * 100),
+                        "width": int((mw / w) * 100),
+                        "height": int((mh / h) * 100),
+                        "color": "#F59E0B"
+                    })
+
         return annotated_frame, active_detections
+
+    def _render_motion_box_hud(self, img: np.ndarray, mx: int, my: int, mw: int, mh: int, motion_pct: float):
+        """Renders tactical amber/gold motion indicator box on live video stream."""
+        color = (11, 158, 245) # Amber/Gold in BGR (0x0B, 0x9E, 0xF5)
+        # Wireframe box
+        cv2.rectangle(img, (mx, my), (mx + mw, my + mh), color, 1, cv2.LINE_AA)
+        
+        # Corner brackets
+        blen = min(16, max(6, int(min(mw, mh) * 0.25)))
+        cv2.line(img, (mx, my), (mx + blen, my), color, 2, cv2.LINE_AA)
+        cv2.line(img, (mx, my), (mx, my + blen), color, 2, cv2.LINE_AA)
+        cv2.line(img, (mx + mw, my), (mx + mw - blen, my), color, 2, cv2.LINE_AA)
+        cv2.line(img, (mx + mw, my), (mx + mw, my + blen), color, 2, cv2.LINE_AA)
+        cv2.line(img, (mx, my + mh), (mx + blen, my + mh), color, 2, cv2.LINE_AA)
+        cv2.line(img, (mx, my + mh), (mx, my + mh - blen), color, 2, cv2.LINE_AA)
+        cv2.line(img, (mx + mw, my + mh), (mx + mw - blen, my + mh), color, 2, cv2.LINE_AA)
+        cv2.line(img, (mx + mw, my + mh), (mx + mw, my + mh - blen), color, 2, cv2.LINE_AA)
+
+        # Label tag
+        tag = f"MOTION {motion_pct}%"
+        cv2.putText(img, tag, (mx + 4, max(14, my - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 0, 0), 2, cv2.LINE_AA)
+        cv2.putText(img, tag, (mx + 4, max(14, my - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1, cv2.LINE_AA)
 
     def _render_face_biometric_hud(
         self,

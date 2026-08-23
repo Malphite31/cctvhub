@@ -104,15 +104,19 @@ class DVRManager:
         t = threading.Thread(target=_sync_worker, daemon=True)
         t.start()
 
-    def capture_snapshot(self) -> Optional[str]:
-        filename = f"snapshot_{int(time.time())}.jpg"
+    def capture_snapshot(self, camera_id: str = "0", filename: Optional[str] = None) -> Optional[str]:
+        if not filename:
+            filename = f"snapshot_{camera_id}_{int(time.time())}.jpg"
         filepath = self.get_snapshots_dir() / filename
-        
-        frame = camera_worker.get_latest_frame()
+
+        from .camera_worker import camera_manager
+        worker = camera_manager.get_worker(camera_id)
+        frame = worker.get_latest_frame()
+
         if frame is not None:
             cv2.imwrite(str(filepath), frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
         else:
-            jpeg = camera_worker.get_latest_jpeg()
+            jpeg = worker.get_latest_jpeg()
             if jpeg:
                 filepath.write_bytes(jpeg)
 
@@ -121,7 +125,7 @@ class DVRManager:
             # Log real event in DB
             log_event(
                 event_type="snapshot",
-                camera_id="CAM 1",
+                camera_id=f"CAM {camera_id}",
                 title="Snapshot Captured",
                 details=f"File: {filename}",
                 thumbnail_url=url
@@ -129,6 +133,61 @@ class DVRManager:
             self._auto_sync(filepath)
             return url
             
+        return None
+
+    def record_clip(self, camera_id: str = "0", filename: Optional[str] = None, duration_seconds: int = 15) -> Optional[Path]:
+        """Records a video clip for a specific camera in background, encoding to browser-compatible H.264."""
+        if not filename:
+            filename = f"clip_{camera_id}_{int(time.time())}.mp4"
+        filepath = self.get_recordings_dir() / filename
+        raw_filepath = filepath.with_suffix('.raw.mp4')
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        writer = None
+        start_t = time.time()
+
+        from .camera_worker import camera_manager
+        worker = camera_manager.get_worker(camera_id)
+
+        while time.time() - start_t < duration_seconds:
+            frame = worker.get_latest_frame()
+            if frame is not None:
+                if writer is None:
+                    h, w = frame.shape[:2]
+                    writer = cv2.VideoWriter(str(raw_filepath), fourcc, 30.0, (w, h))
+                writer.write(frame)
+            time.sleep(1.0 / 30.0)
+
+        if writer:
+            writer.release()
+            writer = None
+
+        if raw_filepath.exists() and raw_filepath.stat().st_size > 0:
+            try:
+                ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe() if imageio_ffmpeg else "ffmpeg"
+                cmd = [
+                    ffmpeg_exe, "-y",
+                    "-i", str(raw_filepath),
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",
+                    "-pix_fmt", "yuv420p",
+                    "-movflags", "+faststart",
+                    str(filepath)
+                ]
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            except Exception as e:
+                print(f"Error encoding motion clip {filename}: {e}")
+                if raw_filepath.exists() and not filepath.exists():
+                    shutil.copy(raw_filepath, filepath)
+            finally:
+                if raw_filepath.exists():
+                    try:
+                        raw_filepath.unlink()
+                    except Exception:
+                        pass
+
+        if filepath.exists() and filepath.stat().st_size > 0:
+            self._auto_sync(filepath)
+            return filepath
         return None
 
     def start_manual_recording(self, duration_seconds: int = 60) -> Dict[str, Any]:

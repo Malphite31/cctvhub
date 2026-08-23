@@ -3,6 +3,7 @@ import { StreamStats, CameraDevice, TrackerSettings, CustomTracker } from '../ty
 import { TrackerHUDOverlay } from './TrackerHUDOverlay';
 import { CustomObjectTrackerModal } from './CustomObjectTrackerModal';
 import { CameraEditModal } from './CameraEditModal';
+import { MotionDetectionModal } from './MotionDetectionModal';
 import {
   Play,
   Pause,
@@ -33,7 +34,8 @@ import {
   RotateCw,
   RotateCcw,
   ZoomIn,
-  Move
+  Move,
+  Activity
 } from 'lucide-react';
 
 interface MainPlayerProps {
@@ -121,6 +123,11 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     width: 35,
     height: 45,
   });
+
+  // Motion Detection State
+  const [isMotionModalOpen, setIsMotionModalOpen] = useState(false);
+  const [isMotionDetected, setIsMotionDetected] = useState(false);
+  const [motionLevel, setMotionLevel] = useState(0);
 
   // Vision Tracker Global Settings
   const [trackerSettings, setTrackerSettings] = useState<TrackerSettings>({
@@ -272,6 +279,24 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     };
     fetchTrackerSettings();
   }, []);
+
+  // Poll real-time motion detection status
+  useEffect(() => {
+    if (!activeDevice || !isPlaying) return;
+    const fetchMotionStatus = async () => {
+      try {
+        const res = await fetch(`/api/motion/status?camera_id=${encodeURIComponent(activeDevice)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setIsMotionDetected(Boolean(data.is_motion_detected));
+          setMotionLevel(Number(data.motion_level_pct || 0));
+        }
+      } catch {}
+    };
+    fetchMotionStatus();
+    const interval = setInterval(fetchMotionStatus, 1500);
+    return () => clearInterval(interval);
+  }, [activeDevice, isPlaying]);
 
   // Listen for fullscreen changes
   useEffect(() => {
@@ -664,6 +689,13 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                     <span>LIVE</span>
                   </div>
 
+                  {isMotionDetected && (
+                    <div className="bg-amber-500/20 backdrop-blur-xs px-2 py-0.5 rounded-md border border-amber-500/60 flex items-center gap-1.5 text-[10px] font-mono text-amber-300 animate-pulse shadow-lg shadow-amber-500/10">
+                      <Activity className="h-2.5 w-2.5 text-amber-400" />
+                      <span>MOTION {motionLevel > 0 ? `(${motionLevel}%)` : 'DETECTED'}</span>
+                    </div>
+                  )}
+
                   {customTrackers.length > 0 && trackerSettings.enabled && (
                     <div className="bg-black/75 backdrop-blur-xs px-2 py-0.5 rounded-md border border-[#3B82F6]/40 flex items-center gap-1 text-[10px] font-mono text-[#3B82F6]">
                       <Crosshair className="h-2.5 w-2.5" />
@@ -806,6 +838,23 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                 >
                   {trackerSettings.enabled ? <Eye className="h-3 w-3 text-[#3B82F6]" /> : <EyeOff className="h-3 w-3 text-zinc-400" />}
                   <span className="hidden md:inline">{trackerSettings.enabled ? 'HUD On' : 'HUD Off'}</span>
+                </button>
+
+                {/* Motion Detector Button & Settings */}
+                <button
+                  onClick={() => setIsMotionModalOpen(true)}
+                  className={`flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1 rounded text-[11px] font-medium border backdrop-blur transition-colors ${
+                    isMotionDetected
+                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 hover:bg-amber-500/30'
+                      : 'bg-black/80 hover:bg-black text-zinc-300 border-[#333333]'
+                  }`}
+                  title="Motion Detector & Trigger Actions (Snapshot / Video Recording)"
+                >
+                  <Activity className={`h-3 w-3 ${isMotionDetected ? 'text-amber-400 animate-pulse' : 'text-zinc-400'}`} />
+                  <span className="hidden md:inline font-mono">Motion</span>
+                  {isMotionDetected && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
+                  )}
                 </button>
 
                 {/* Mute / Audio with Volume Slider */}
@@ -1130,6 +1179,14 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
         }}
         camera={editingCamera}
         onSaved={onReconnect}
+      />
+
+      {/* Motion Detection & Trigger Actions Configuration Modal */}
+      <MotionDetectionModal
+        isOpen={isMotionModalOpen}
+        onClose={() => setIsMotionModalOpen(false)}
+        cameraId={activeDevice}
+        onShowToast={onShowToast}
       />
     </div>
   );
