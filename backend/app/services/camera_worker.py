@@ -41,6 +41,7 @@ class CameraWorker:
         self.zoom = 1.0
         self.pan_x = 0.0
         self.pan_y = 0.0
+        self._need_reconnect = False
 
     def start(self, width: Optional[int] = None, height: Optional[int] = None, fps: Optional[int] = None):
         if self.is_running:
@@ -67,22 +68,18 @@ class CameraWorker:
         self.requested_width = width
         self.requested_height = height
         self.requested_fps = fps
+        self.resolution = f"{width}x{height}"
+        self._need_reconnect = True
 
-        if self.cap is not None and self.cap.isOpened():
-            try:
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-                self.cap.set(cv2.CAP_PROP_FPS, fps)
-                actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or width
-                actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or height
-                self.resolution = f"{actual_w}x{actual_h}"
-            except Exception as e:
-                logger.warning(f"Live property adjustment error: {e}")
-                self.resolution = f"{width}x{height}"
-        else:
-            self.resolution = f"{width}x{height}"
-            if not self.is_running:
-                self.start()
+        if not self.is_running:
+            self.start()
+
+        # Update configured database camera if exists
+        try:
+            from ..core.database import update_configured_camera
+            update_configured_camera(str(self.device), resolution=self.resolution, fps=fps)
+        except Exception:
+            pass
 
         return {
             "status": "success",
@@ -190,6 +187,40 @@ class CameraWorker:
 
         while self.is_running:
             loop_start = time.time()
+
+            if getattr(self, "_need_reconnect", False):
+                self._need_reconnect = False
+                logger.info(f"Re-initializing camera {self.device} for {self.requested_width}x{self.requested_height} @ {self.requested_fps}fps")
+                if self.cap is not None:
+                    try:
+                        self.cap.release()
+                    except Exception:
+                        pass
+                time.sleep(0.05)
+                if is_ip_stream:
+                    self.cap = cv2.VideoCapture(source_val, cv2.CAP_FFMPEG)
+                elif is_windows and dev_idx is not None:
+                    self.cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
+                elif dev_idx is not None:
+                    self.cap = cv2.VideoCapture(dev_idx)
+                else:
+                    self.cap = cv2.VideoCapture(source_val)
+
+                if self.cap.isOpened():
+                    if not is_ip_stream:
+                        try:
+                            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+                            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.requested_width)
+                            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.requested_height)
+                            self.cap.set(cv2.CAP_PROP_FPS, self.requested_fps or 60)
+                            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                        except Exception:
+                            pass
+                    actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or self.requested_width
+                    actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or self.requested_height
+                    self.resolution = f"{actual_w}x{actual_h}"
+                    self.is_hardware_active = True
+                    logger.info(f"Camera {self.device} re-opened @ {self.resolution}")
 
             if self.is_hardware_active and self.cap and self.cap.isOpened():
                 ret, frame = self.cap.read()

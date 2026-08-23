@@ -143,6 +143,23 @@ async def live_stream(dev: str = Query("0", description="Camera device index")):
         }
     )
 
+@router.get("/frame")
+def get_single_frame(dev: str = Query("0", description="Camera device index")):
+    """Get single latest JPEG frame from camera worker for instant preview / frozen pause."""
+    worker = camera_manager.get_worker(dev)
+    jpeg = worker.get_latest_jpeg()
+    if jpeg is None:
+        raise HTTPException(status_code=503, detail="Camera signal not ready")
+    return Response(
+        content=jpeg,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
+
 @router.websocket("/audio/ws")
 async def audio_websocket(websocket: WebSocket):
     """Live PCM Audio WebSocket stream."""

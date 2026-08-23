@@ -671,6 +671,7 @@ export const App: React.FC = () => {
                     onRefreshDevices={fetchDevices}
                     onShowToast={showToast}
                     userRole={currentUser.role}
+                    telemetry={telemetry}
                   />
                 </div>
 
