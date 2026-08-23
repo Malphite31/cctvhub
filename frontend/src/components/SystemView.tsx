@@ -1,16 +1,22 @@
 import React from 'react';
-import { Cpu, Server, HardDrive, Radio, Video, RefreshCw } from 'lucide-react';
-import { SystemTelemetry, CameraDevice } from '../types';
+import { Cpu, Server, HardDrive, Radio, Video, RefreshCw, Sparkles, ArrowUpRight, CheckCircle2, Download, GitBranch } from 'lucide-react';
+import { SystemTelemetry, CameraDevice, UpdateCheckInfo } from '../types';
 
 interface SystemViewProps {
   telemetry: SystemTelemetry | null;
   devices: CameraDevice[];
+  updateInfo?: UpdateCheckInfo | null;
+  onOpenUpdateModal?: () => void;
+  onCheckUpdate?: () => void;
   onRefresh: () => void;
 }
 
 export const SystemView: React.FC<SystemViewProps> = ({
   telemetry,
   devices,
+  updateInfo,
+  onOpenUpdateModal,
+  onCheckUpdate,
   onRefresh,
 }) => {
   const cpuPercent = telemetry ? telemetry.cpu_percent : 0;
@@ -24,6 +30,12 @@ export const SystemView: React.FC<SystemViewProps> = ({
   const uptime = telemetry?.uptime_formatted || 'Online';
   const netSent = telemetry?.network_sent_mbps ?? 0;
   const netRecv = telemetry?.network_recv_mbps ?? 0;
+
+  const currentCommit = updateInfo?.current_commit || 'main';
+  const latestCommit = updateInfo?.latest_commit || currentCommit;
+  const hasUpdate = updateInfo?.update_available || false;
+  const commitMsg = updateInfo?.latest_commit_message || 'Running latest release';
+  const branch = updateInfo?.branch || 'main';
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto space-y-3 sm:space-y-4 select-none text-xs">
@@ -46,6 +58,104 @@ export const SystemView: React.FC<SystemViewProps> = ({
           <RefreshCw className="h-3 w-3 text-[#3B82F6]" />
           <span>Refresh</span>
         </button>
+      </div>
+
+      {/* Software & Git Updates Card */}
+      <div className="rounded-xl border border-[#222222] bg-[#121212] p-3.5 sm:p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[#222222]">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-[#3B82F6]/10 border border-[#3B82F6]/20 flex items-center justify-center text-[#3B82F6]">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div>
+              <h4 className="font-semibold text-xs text-white flex items-center gap-2">
+                Software & System Updates
+                {hasUpdate && (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                    UPDATE AVAILABLE
+                  </span>
+                )}
+              </h4>
+              <p className="text-[10px] text-zinc-400 font-mono">
+                Continuous in-app delivery via GitHub repository
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {onCheckUpdate && (
+              <button
+                type="button"
+                onClick={onCheckUpdate}
+                className="px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-zinc-300 border border-[#2a2a2a] text-[11px] font-mono flex items-center gap-1.5 transition-colors"
+                title="Check GitHub repository for new commits"
+              >
+                <RefreshCw className="h-3 w-3 text-zinc-400" />
+                <span>Check Updates</span>
+              </button>
+            )}
+
+            {onOpenUpdateModal && (
+              <button
+                type="button"
+                onClick={onOpenUpdateModal}
+                className={`px-3 py-1.5 rounded-lg text-white font-medium text-[11px] flex items-center gap-1.5 transition-all shadow-md ${
+                  hasUpdate
+                    ? 'bg-[#3B82F6] hover:bg-blue-600 shadow-blue-500/20'
+                    : 'bg-[#18181c] hover:bg-[#242428] text-zinc-200 border border-[#2e2e34]'
+                }`}
+              >
+                {hasUpdate ? <Download className="h-3 w-3" /> : <ArrowUpRight className="h-3 w-3" />}
+                <span>{hasUpdate ? 'Update Now' : 'Manage Version'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Build & Version Information Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+          <div className="p-2.5 rounded-lg bg-[#161616] border border-[#222222] space-y-0.5">
+            <span className="text-[10px] font-mono text-zinc-400">Current Commit</span>
+            <div className="font-mono text-xs text-white font-bold flex items-center gap-1.5">
+              <span>{currentCommit}</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#222222] text-zinc-400 font-normal">v2.1.0</span>
+            </div>
+          </div>
+
+          <div className="p-2.5 rounded-lg bg-[#161616] border border-[#222222] space-y-0.5">
+            <span className="text-[10px] font-mono text-zinc-400">Git Branch</span>
+            <div className="font-mono text-xs text-white font-bold flex items-center gap-1">
+              <GitBranch className="h-3 w-3 text-[#3B82F6]" />
+              <span>{branch}</span>
+            </div>
+          </div>
+
+          <div className="p-2.5 rounded-lg bg-[#161616] border border-[#222222] space-y-0.5">
+            <span className="text-[10px] font-mono text-zinc-400">System Status</span>
+            <div className="flex items-center gap-1.5 text-xs font-mono">
+              {hasUpdate ? (
+                <>
+                  <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping shrink-0" />
+                  <span className="text-amber-300 font-semibold">{latestCommit} Ready</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                  <span className="text-emerald-400 font-semibold">Up to Date</span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Latest Commit Message Preview */}
+        <div className="p-2.5 rounded-lg bg-[#161616] border border-[#222222] flex items-center justify-between text-[11px] font-mono text-zinc-300">
+          <span className="truncate pr-2">
+            <span className="text-zinc-500 mr-2">Release:</span>
+            {commitMsg}
+          </span>
+          <span className="text-[9px] text-zinc-500 shrink-0">auto-checks every 30m</span>
+        </div>
       </div>
 
       {/* Primary 4 Resource Metrics */}
@@ -138,3 +248,4 @@ export const SystemView: React.FC<SystemViewProps> = ({
     </div>
   );
 };
+

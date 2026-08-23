@@ -59,6 +59,7 @@ app.include_router(events.router, prefix="/api/events", tags=["Surveillance Even
 app.include_router(trackers.router, prefix="/api/trackers", tags=["Custom Object & Zone Trackers"])
 app.include_router(cameras.router, prefix="/api/cameras", tags=["Camera Management & Hardware"])
 app.include_router(motion.router, prefix="/api/motion", tags=["Motion Detection & Triggers"])
+app.include_router(telemetry.router, prefix="/api/system", tags=["System & Updates"])
 
 # Serve frontend build if exists
 FRONTEND_PATHS = [

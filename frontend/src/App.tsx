@@ -12,6 +12,7 @@ import { SystemView } from './components/SystemView';
 import { SettingsModal } from './components/SettingsModal';
 import { EnrollFaceModal } from './components/EnrollFaceModal';
 import { EventDetailsModal } from './components/EventDetailsModal';
+import { SoftwareUpdateModal } from './components/SoftwareUpdateModal';
 import { LoginScreen } from './components/LoginScreen';
 
 import { useLiveAudio } from './hooks/useLiveAudio';
@@ -23,7 +24,8 @@ import {
   SnapshotItem,
   StorageLocationInfo,
   SurveillanceEvent,
-  EnrolledPerson
+  EnrolledPerson,
+  UpdateCheckInfo
 } from './types';
 
 export const App: React.FC = () => {
@@ -65,6 +67,10 @@ export const App: React.FC = () => {
   // Recording State
   const [isRecording, setIsRecording] = useState(false);
   const [recordingElapsed, setRecordingElapsed] = useState(0);
+
+  // Software Updates State
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckInfo | null>(null);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
 
   // Toast State
   const [toastMsg, setToastMsg] = useState<{ text: string; isError?: boolean } | null>(null);
@@ -177,6 +183,24 @@ export const App: React.FC = () => {
     } catch {}
   };
 
+  const fetchUpdateCheck = async (force = false) => {
+    try {
+      const url = force ? '/api/system/update/check?force=true' : '/api/system/version';
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setUpdateInfo(data);
+        if (force) {
+          if (data.update_available) {
+            showToast(`Update available: ${data.latest_commit}`);
+          } else {
+            showToast('System is up to date!');
+          }
+        }
+      }
+    } catch {}
+  };
+
   // Initial Pollers
   useEffect(() => {
     fetchTelemetry();
@@ -186,15 +210,18 @@ export const App: React.FC = () => {
     fetchRecordings();
     fetchFaces();
     fetchEvents();
+    fetchUpdateCheck();
 
     const telemetryInterval = setInterval(fetchTelemetry, 3000);
     const eventsInterval = setInterval(fetchEvents, 4000);
     const devicesInterval = setInterval(fetchDevices, 10000);
+    const updateInterval = setInterval(() => fetchUpdateCheck(false), 60000);
 
     return () => {
       clearInterval(telemetryInterval);
       clearInterval(eventsInterval);
       clearInterval(devicesInterval);
+      clearInterval(updateInterval);
     };
   }, []);
 
@@ -496,6 +523,8 @@ export const App: React.FC = () => {
           telemetry={telemetry}
           unreadEventsCount={events.length}
           recentEvents={events}
+          updateInfo={updateInfo}
+          onOpenUpdateModal={() => setIsUpdateModalOpen(true)}
           onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onSignOut={handleLogout}
@@ -641,6 +670,9 @@ export const App: React.FC = () => {
               <SystemView
                 telemetry={telemetry}
                 devices={devices}
+                updateInfo={updateInfo}
+                onOpenUpdateModal={() => setIsUpdateModalOpen(true)}
+                onCheckUpdate={() => fetchUpdateCheck(true)}
                 onRefresh={fetchTelemetry}
               />
             </div>
@@ -667,6 +699,15 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Software Update Modal */}
+      <SoftwareUpdateModal
+        isOpen={isUpdateModalOpen}
+        onClose={() => setIsUpdateModalOpen(false)}
+        updateInfo={updateInfo}
+        onRefreshCheck={() => fetchUpdateCheck(true)}
+        onShowToast={showToast}
+      />
 
       {/* Settings Modal */}
       <SettingsModal

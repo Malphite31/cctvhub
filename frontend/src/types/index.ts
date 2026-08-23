@@ -13,6 +13,16 @@ export interface SystemTelemetry {
   network_recv_mbps?: number;
 }
 
+export interface UpdateCheckInfo {
+  update_available: boolean;
+  current_commit: string;
+  latest_commit: string;
+  latest_commit_message: string;
+  latest_commit_date: string;
+  branch: string;
+  last_checked: number;
+}
+
 export interface CameraDevice {
   device: string;
   name: string;

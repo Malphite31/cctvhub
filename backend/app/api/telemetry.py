@@ -63,19 +63,35 @@ def get_camera_devices():
 
 @router.get("/version")
 def get_version_info():
-    """Returns application version, Git commit hash, and branch."""
-    import subprocess
-    commit = "v2.1.0"
-    branch = "main"
-    try:
-        commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()
-        branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()
-    except Exception:
-        pass
-
+    """Returns application version, Git commit hash, branch, and update status."""
+    from ..services.updater import updater_service
+    status = updater_service.get_status()
+    check_info = status.get("check_info", {})
     return {
         "version": "2.1.0",
-        "commit": commit,
-        "branch": branch,
-        "git_upgradable": True
+        "commit": updater_service.get_current_commit(),
+        "branch": updater_service.get_current_branch(),
+        "git_upgradable": True,
+        "update_available": check_info.get("update_available", False),
+        "latest_commit": check_info.get("latest_commit", ""),
+        "latest_commit_message": check_info.get("latest_commit_message", ""),
+        "last_checked": check_info.get("last_checked", 0)
     }
+
+@router.get("/update/check")
+def check_for_updates(force: bool = False):
+    """Force or query an update check against GitHub."""
+    from ..services.updater import updater_service
+    return updater_service.check_for_updates(force=force)
+
+@router.post("/update/apply")
+def apply_update():
+    """Trigger in-app git pull and service upgrade."""
+    from ..services.updater import updater_service
+    return updater_service.apply_update()
+
+@router.get("/update/status")
+def get_update_status():
+    """Poll live update progress, status, and terminal log stream."""
+    from ..services.updater import updater_service
+    return updater_service.get_status()
