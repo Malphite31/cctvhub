@@ -4,6 +4,7 @@ import { TrackerHUDOverlay } from './TrackerHUDOverlay';
 import { CustomObjectTrackerModal } from './CustomObjectTrackerModal';
 import { CameraEditModal } from './CameraEditModal';
 import { MotionDetectionModal } from './MotionDetectionModal';
+import { ConfirmModal } from './ConfirmModal';
 import {
   Play,
   Pause,
@@ -112,6 +113,8 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
   // Camera Edit & Add Modal State
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [editingCamera, setEditingCamera] = useState<CameraDevice | null>(null);
+  const [camToDelete, setCamToDelete] = useState<string | null>(null);
+  const [isDeletingCam, setIsDeletingCam] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
 
   // Custom Object & Zone Trackers State
@@ -467,13 +470,20 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     setIsCameraModalOpen(true);
   };
 
-  const handleDeleteCamera = async (camId: string) => {
+  const handleDeleteCamera = (camId: string) => {
     setShowMoreMenu(false);
-    if (!window.confirm(`Are you sure you want to delete camera "${camId}"?`)) return;
+    setCamToDelete(camId);
+  };
+
+  const handleConfirmDeleteCamera = async () => {
+    if (!camToDelete) return;
+    setIsDeletingCam(true);
+    const camId = camToDelete;
     try {
       const res = await fetch(`/api/cameras/${encodeURIComponent(camId)}`, { method: 'DELETE' });
       if (res.ok) {
         if (onShowToast) onShowToast(`Camera deleted`);
+        setCamToDelete(null);
         if (onRefreshDevices) onRefreshDevices();
         onReconnect();
       } else {
@@ -484,6 +494,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
         });
         if (postRes.ok) {
           if (onShowToast) onShowToast(`Camera deleted`);
+          setCamToDelete(null);
           if (onRefreshDevices) onRefreshDevices();
           onReconnect();
         } else {
@@ -493,6 +504,8 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     } catch (e) {
       console.error(e);
       if (onShowToast) onShowToast('Error deleting camera', true);
+    } finally {
+      setIsDeletingCam(false);
     }
   };
 
@@ -1401,6 +1414,23 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
           </div>
         </div>
       )}
+
+      {/* Delete Camera Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(camToDelete)}
+        title="Delete Camera Stream"
+        message={
+          <p>
+            Are you sure you want to delete camera <strong className="text-white">"{camToDelete}"</strong>?
+            This will stop the stream connection and remove the camera from active surveillance.
+          </p>
+        }
+        confirmText="Delete Camera"
+        isLoading={isDeletingCam}
+        variant="danger"
+        onConfirm={handleConfirmDeleteCamera}
+        onClose={() => setCamToDelete(null)}
+      />
     </div>
   );
 };

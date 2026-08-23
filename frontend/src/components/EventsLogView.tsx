@@ -18,6 +18,8 @@ import {
   Square
 } from 'lucide-react';
 
+import { ConfirmModal } from './ConfirmModal';
+
 interface EventsLogViewProps {
   events: SurveillanceEvent[];
   onRefresh: () => void;
@@ -40,6 +42,9 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'face' | 'motion' | 'vehicle' | 'recording' | 'snapshot'>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [eventToDelete, setEventToDelete] = useState<(string | number) | null>(null);
+  const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
 
   const filteredEvents = useMemo(() => {
     return events.filter((ev) => {
@@ -176,18 +181,41 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
     });
   };
 
-  const handleDeleteSelected = async () => {
-    if (selectedIds.size === 0) return;
+  const handleConfirmClearEvents = () => {
+    if (onClearEvents) {
+      setSelectedIds(new Set());
+      onClearEvents();
+    }
+    setShowClearModal(false);
+  };
+
+  const handleConfirmDeleteSingleEvent = () => {
+    if (eventToDelete !== null && onDeleteEvent) {
+      onDeleteEvent(eventToDelete);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(eventToDelete);
+        return next;
+      });
+    }
+    setEventToDelete(null);
+  };
+
+  const handleConfirmBatchDelete = async () => {
+    if (selectedIds.size === 0) {
+      setShowBatchDeleteModal(false);
+      return;
+    }
     const idsList = Array.from(selectedIds);
     if (onBatchDeleteEvents) {
       await onBatchDeleteEvents(idsList);
-      setSelectedIds(new Set());
     } else if (onDeleteEvent) {
       for (const id of idsList) {
         await onDeleteEvent(id);
       }
-      setSelectedIds(new Set());
     }
+    setSelectedIds(new Set());
+    setShowBatchDeleteModal(false);
   };
 
   const renderBadge = (type: string) => {
@@ -282,10 +310,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
             {/* Clear All Logs Button */}
             {onClearEvents && (
               <button
-                onClick={() => {
-                  setSelectedIds(new Set());
-                  onClearEvents();
-                }}
+                onClick={() => setShowClearModal(true)}
                 disabled={events.length === 0}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-rose-950/60 text-zinc-300 hover:text-rose-300 border border-[#333] hover:border-rose-900/60 transition-colors text-[11px] font-mono disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Clear all logged events"
@@ -365,7 +390,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
                 Deselect
               </button>
               <button
-                onClick={handleDeleteSelected}
+                onClick={() => setShowBatchDeleteModal(true)}
                 className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-semibold font-mono transition-colors shadow-xs"
               >
                 <Trash2 className="h-3 w-3" />
@@ -503,7 +528,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            onDeleteEvent(ev.id);
+                            setEventToDelete(ev.id);
                           }}
                           className="p-1 rounded bg-[#161616] group-hover:bg-rose-950/40 text-zinc-500 hover:text-rose-400 transition-colors"
                           title="Delete this log"
@@ -617,7 +642,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            onDeleteEvent(ev.id);
+                            setEventToDelete(ev.id);
                           }}
                           className="p-1 rounded bg-[#202020] hover:bg-rose-950/60 text-zinc-400 hover:text-rose-400"
                           title="Delete"
@@ -633,6 +658,52 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Clear All Events Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showClearModal}
+        title="Clear All Event Logs"
+        message={
+          <p>
+            Are you sure you want to permanently clear all <strong className="text-white">{events.length}</strong> event logs?
+            This will purge the audit trail history.
+          </p>
+        }
+        confirmText="Clear All Logs"
+        variant="danger"
+        onConfirm={handleConfirmClearEvents}
+        onClose={() => setShowClearModal(false)}
+      />
+
+      {/* Batch Delete Events Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showBatchDeleteModal}
+        title="Delete Selected Event Logs"
+        message={
+          <p>
+            Are you sure you want to delete <strong className="text-white">{selectedIds.size}</strong> selected log entries?
+          </p>
+        }
+        confirmText={`Delete (${selectedIds.size}) Logs`}
+        variant="danger"
+        onConfirm={handleConfirmBatchDelete}
+        onClose={() => setShowBatchDeleteModal(false)}
+      />
+
+      {/* Single Event Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={eventToDelete !== null}
+        title="Delete Event Log"
+        message={
+          <p>
+            Are you sure you want to remove event log <strong className="text-white">#{eventToDelete}</strong> from the surveillance database?
+          </p>
+        }
+        confirmText="Delete Log"
+        variant="danger"
+        onConfirm={handleConfirmDeleteSingleEvent}
+        onClose={() => setEventToDelete(null)}
+      />
     </div>
   );
 };

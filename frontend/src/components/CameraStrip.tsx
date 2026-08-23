@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { CameraDevice } from '../types';
 import { CameraEditModal } from './CameraEditModal';
+import { ConfirmModal } from './ConfirmModal';
 import {
   ChevronLeft,
   ChevronRight,
@@ -29,6 +30,8 @@ export const CameraStrip: React.FC<CameraStripProps> = ({
 }) => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingCam, setEditingCam] = useState<CameraDevice | null>(null);
+  const [camToDelete, setCamToDelete] = useState<CameraDevice | null>(null);
+  const [isDeletingCam, setIsDeletingCam] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const handleScroll = (direction: 'left' | 'right') => {
@@ -52,14 +55,21 @@ export const CameraStrip: React.FC<CameraStripProps> = ({
     setIsEditModalOpen(true);
   };
 
-  const handleDeleteCamera = async (e: React.MouseEvent, cam: CameraDevice) => {
+  const handleDeleteCamera = (e: React.MouseEvent, cam: CameraDevice) => {
     e.stopPropagation();
-    if (!window.confirm(`Are you sure you want to delete camera "${cam.name}"?`)) return;
+    setCamToDelete(cam);
+  };
+
+  const handleConfirmDeleteCamera = async () => {
+    if (!camToDelete) return;
+    setIsDeletingCam(true);
+    const cam = camToDelete;
     try {
       const camId = cam.device;
       const res = await fetch(`/api/cameras/${encodeURIComponent(camId)}`, { method: 'DELETE' });
       if (res.ok) {
         if (onShowToast) onShowToast(`Camera "${cam.name}" deleted`);
+        setCamToDelete(null);
         if (onRefreshDevices) onRefreshDevices();
       } else {
         // Fallback to POST /api/cameras/delete
@@ -70,6 +80,7 @@ export const CameraStrip: React.FC<CameraStripProps> = ({
         });
         if (postRes.ok) {
           if (onShowToast) onShowToast(`Camera "${cam.name}" deleted`);
+          setCamToDelete(null);
           if (onRefreshDevices) onRefreshDevices();
         } else {
           const errData = await postRes.json().catch(() => ({}));
@@ -78,6 +89,8 @@ export const CameraStrip: React.FC<CameraStripProps> = ({
       }
     } catch {
       if (onShowToast) onShowToast('Error deleting camera', true);
+    } finally {
+      setIsDeletingCam(false);
     }
   };
 
@@ -236,6 +249,23 @@ export const CameraStrip: React.FC<CameraStripProps> = ({
           if (onRefreshDevices) onRefreshDevices();
           if (onShowToast) onShowToast(editingCam ? 'Camera updated' : 'Camera added');
         }}
+      />
+
+      {/* Delete Camera Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(camToDelete)}
+        title="Delete Camera"
+        message={
+          <p>
+            Are you sure you want to delete camera <strong className="text-white">"{camToDelete?.name}"</strong> ({camToDelete?.device})?
+            This will stop the video feed and remove the camera from active surveillance.
+          </p>
+        }
+        confirmText="Delete Camera"
+        isLoading={isDeletingCam}
+        variant="danger"
+        onConfirm={handleConfirmDeleteCamera}
+        onClose={() => setCamToDelete(null)}
       />
     </div>
   );

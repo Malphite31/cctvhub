@@ -7,8 +7,10 @@ import {
   Globe,
   RefreshCw,
   LogOut,
-  Search
+  Search,
+  Trash2
 } from 'lucide-react';
+import { ConfirmModal } from './ConfirmModal';
 
 interface SessionLogsViewProps {
   onShowToast: (msg: string, isErr?: boolean) => void;
@@ -17,6 +19,8 @@ interface SessionLogsViewProps {
 export const SessionLogsView: React.FC<SessionLogsViewProps> = ({ onShowToast }) => {
   const [sessions, setSessions] = useState<UserSessionLog[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [showClearModal, setShowClearModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'ended'>('all');
 
@@ -32,6 +36,25 @@ export const SessionLogsView: React.FC<SessionLogsViewProps> = ({ onShowToast })
       onShowToast('Failed to fetch session audit logs', true);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleClearSessions = async () => {
+    setIsClearing(true);
+    try {
+      const res = await fetch('/api/auth/sessions', { method: 'DELETE' });
+      if (res.ok) {
+        const data = await res.json();
+        onShowToast(`Purged ${data.cleared_count || 0} session audit log entries`);
+        setShowClearModal(false);
+        fetchSessions();
+      } else {
+        onShowToast('Failed to clear session logs', true);
+      }
+    } catch {
+      onShowToast('Error connecting to session audit service', true);
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -88,15 +111,28 @@ export const SessionLogsView: React.FC<SessionLogsViewProps> = ({ onShowToast })
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={fetchSessions}
-          disabled={isLoading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#161616] hover:bg-[#202020] text-zinc-200 border border-[#262626] font-mono text-xs transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin text-emerald-400' : 'text-zinc-400'}`} />
-          <span>Refresh Logs</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {sessions.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowClearModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 font-mono text-xs transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Clear Logs</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={fetchSessions}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#161616] hover:bg-[#202020] text-zinc-200 border border-[#262626] font-mono text-xs transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin text-emerald-400' : 'text-zinc-400'}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter / Search Bar */}
@@ -228,6 +264,23 @@ export const SessionLogsView: React.FC<SessionLogsViewProps> = ({ onShowToast })
           </div>
         )}
       </div>
+
+      {/* Clear Session Logs Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showClearModal}
+        title="Clear Session Audit Logs"
+        message={
+          <p>
+            Are you sure you want to purge all <strong className="text-white">{sessions.length}</strong> session audit records?
+            This will permanently remove device, IP, and timestamp history from the database.
+          </p>
+        }
+        confirmText="Purge All Records"
+        isLoading={isClearing}
+        variant="danger"
+        onConfirm={handleClearSessions}
+        onClose={() => setShowClearModal(false)}
+      />
     </div>
   );
 };

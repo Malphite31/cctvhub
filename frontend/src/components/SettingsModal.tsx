@@ -5,6 +5,7 @@ import {
   SambaConfig,
 } from '../types';
 import { CameraEditModal } from './CameraEditModal';
+import { ConfirmModal } from './ConfirmModal';
 import {
   Settings as SettingsIcon,
   X,
@@ -61,6 +62,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const isViewer = userRole === 'viewer';
   const [activeTab, setActiveTab] = useState<'security' | 's3' | 'samba' | 'hardware'>('security');
+  const [camToDelete, setCamToDelete] = useState<CameraDevice | null>(null);
+  const [isDeletingCam, setIsDeletingCam] = useState(false);
 
   // User Profile & Security State
   const [username, setUsername] = useState(() => localStorage.getItem('cctv_username') || 'admin');
@@ -120,14 +123,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsCameraModalOpen(true);
   };
 
-  const handleDeleteCamera = async (e: React.MouseEvent, cam: CameraDevice) => {
+  const handleDeleteCamera = (e: React.MouseEvent, cam: CameraDevice) => {
     e.stopPropagation();
-    if (!window.confirm(`Are you sure you want to delete camera "${cam.name}"?`)) return;
+    setCamToDelete(cam);
+  };
+
+  const handleConfirmDeleteCamera = async () => {
+    if (!camToDelete) return;
+    setIsDeletingCam(true);
+    const cam = camToDelete;
     try {
       const camId = cam.device;
       const res = await fetch(`/api/cameras/${encodeURIComponent(camId)}`, { method: 'DELETE' });
       if (res.ok) {
         onShowToast(`Camera "${cam.name}" deleted`);
+        setCamToDelete(null);
         onRefreshStorageLocation();
       } else {
         const postRes = await fetch('/api/cameras/delete', {
@@ -137,6 +147,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         });
         if (postRes.ok) {
           onShowToast(`Camera "${cam.name}" deleted`);
+          setCamToDelete(null);
           onRefreshStorageLocation();
         } else {
           onShowToast('Failed to delete camera', true);
@@ -144,6 +155,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }
     } catch {
       onShowToast('Error deleting camera', true);
+    } finally {
+      setIsDeletingCam(false);
     }
   };
 
@@ -1072,6 +1085,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         }}
         camera={editingCamera}
         onSaved={onRefreshStorageLocation}
+      />
+
+      {/* Delete Camera Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(camToDelete)}
+        title="Delete Camera"
+        message={
+          <p>
+            Are you sure you want to delete camera <strong className="text-white">"{camToDelete?.name}"</strong> ({camToDelete?.device})?
+            This will permanently remove the camera configuration and stop the video feed.
+          </p>
+        }
+        confirmText="Delete Camera"
+        isLoading={isDeletingCam}
+        variant="danger"
+        onConfirm={handleConfirmDeleteCamera}
+        onClose={() => setCamToDelete(null)}
       />
     </div>
   );

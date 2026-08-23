@@ -648,8 +648,8 @@ def list_user_sessions(limit: int = 100) -> List[Dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, session_id, username, display_name, role, ip_address,
-                   device_info, location, login_time, last_heartbeat,
-                   logout_time, logout_reason, status
+                   device_info, location, login_time, last_heartbeat, logout_time,
+                   logout_reason, status
             FROM user_sessions
             ORDER BY login_time DESC
             LIMIT ?
@@ -657,8 +657,12 @@ def list_user_sessions(limit: int = 100) -> List[Dict[str, Any]]:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
-
-
-
-
-
+def clear_user_sessions(keep_active: bool = False) -> int:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if keep_active:
+            cursor.execute("DELETE FROM user_sessions WHERE status != 'active'")
+        else:
+            cursor.execute("DELETE FROM user_sessions")
+        conn.commit()
+        return cursor.rowcount

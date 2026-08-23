@@ -17,6 +17,7 @@ from ..core.database import (
     update_session_heartbeat,
     end_user_session,
     list_user_sessions,
+    clear_user_sessions,
     log_event
 )
 
@@ -337,3 +338,16 @@ def get_session_logs(limit: int = 100, authorization: Optional[str] = Header(Non
     """List session audit logs with Device, Location, IP, Login Time, and Quit Time."""
     sessions = list_user_sessions(limit=limit)
     return {"sessions": sessions}
+
+@router.delete("/sessions")
+@router.post("/sessions/clear")
+def clear_session_logs(keep_active: bool = False, authorization: Optional[str] = Header(None)):
+    """Purge session audit history records."""
+    count = clear_user_sessions(keep_active=keep_active)
+    log_event(
+        event_type="security",
+        camera_id="AUTH",
+        title="Session Audit Logs Cleared",
+        details=f"Purged {count} session records (keep_active={keep_active})"
+    )
+    return {"status": "success", "cleared_count": count}

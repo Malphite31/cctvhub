@@ -14,6 +14,7 @@ import {
   Shield,
   User
 } from 'lucide-react';
+import { ConfirmModal } from './ConfirmModal';
 
 interface FaceProfilesViewProps {
   faces: EnrolledPerson[];
@@ -30,6 +31,7 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [profileToDelete, setProfileToDelete] = useState<EnrolledPerson | null>(null);
 
   const filteredFaces = faces.filter((f) =>
     f.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -172,7 +174,7 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onDeleteFace(person.id);
+                    setProfileToDelete(person);
                   }}
                   className="absolute top-3.5 right-3.5 z-20 p-1.5 bg-black/85 hover:bg-rose-600 text-zinc-400 hover:text-white rounded-lg border border-[#333] opacity-0 group-hover:opacity-100 transition-all shadow-xl"
                   title="Remove Profile"
@@ -234,6 +236,27 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Delete Facial Profile Confirmation Modal */}
+      <ConfirmModal
+        isOpen={profileToDelete !== null}
+        title="Remove Facial Profile"
+        message={
+          <p>
+            Are you sure you want to remove the enrolled profile for <strong className="text-white">"{profileToDelete?.name}"</strong>?
+            This face embedding will no longer be matched by the AI surveillance engine.
+          </p>
+        }
+        confirmText="Remove Profile"
+        variant="danger"
+        onConfirm={() => {
+          if (profileToDelete) {
+            onDeleteFace(profileToDelete.id);
+            setProfileToDelete(null);
+          }
+        }}
+        onClose={() => setProfileToDelete(null)}
+      />
     </div>
   );
 };

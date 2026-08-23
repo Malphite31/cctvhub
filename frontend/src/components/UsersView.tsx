@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Check
 } from 'lucide-react';
+import { ConfirmModal } from './ConfirmModal';
 
 interface UsersViewProps {
   onShowToast: (msg: string, isErr?: boolean) => void;
@@ -27,6 +28,8 @@ export const UsersView: React.FC<UsersViewProps> = ({ onShowToast }) => {
   const [role, setRole] = useState<'viewer' | 'admin'>('viewer');
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<string | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
   const roleMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -101,26 +104,33 @@ export const UsersView: React.FC<UsersViewProps> = ({ onShowToast }) => {
     }
   };
 
-  const handleDeleteUser = async (userToDelete: string) => {
-    if (userToDelete.toLowerCase() === 'admin') {
+  const handleDeleteUser = (targetUsername: string) => {
+    if (targetUsername.toLowerCase() === 'admin') {
       onShowToast('Cannot delete root admin account', true);
       return;
     }
-    if (!window.confirm(`Are you sure you want to remove account "${userToDelete}"?`)) return;
+    setUserToDelete(targetUsername);
+  };
 
+  const handleConfirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    setIsDeletingUser(true);
     try {
       const res = await fetch(`/api/auth/users/${encodeURIComponent(userToDelete)}`, {
         method: 'DELETE',
       });
       if (res.ok) {
-        onShowToast(`User "${userToDelete}" removed successfully`);
+        onShowToast(`User account "${userToDelete}" removed successfully`);
+        setUserToDelete(null);
         fetchUsers();
       } else {
         const data = await res.json();
         onShowToast(data.detail || 'Failed to delete user', true);
       }
     } catch {
-      onShowToast('Error deleting user', true);
+      onShowToast('Error deleting user account', true);
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
@@ -371,6 +381,23 @@ export const UsersView: React.FC<UsersViewProps> = ({ onShowToast }) => {
           </div>
         )}
       </div>
+
+      {/* Delete User Account Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(userToDelete)}
+        title="Delete User Account"
+        message={
+          <p>
+            Are you sure you want to permanently remove account <strong className="text-white">"{userToDelete}"</strong>?
+            This user will immediately lose access to all camera feeds and recorded surveillance.
+          </p>
+        }
+        confirmText="Remove Account"
+        isLoading={isDeletingUser}
+        variant="danger"
+        onConfirm={handleConfirmDeleteUser}
+        onClose={() => setUserToDelete(null)}
+      />
     </div>
   );
 };

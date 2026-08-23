@@ -17,6 +17,7 @@ import {
   Square,
   Check
 } from 'lucide-react';
+import { ConfirmModal } from './ConfirmModal';
 
 interface DVRTimelineProps {
   recordings: RecordingClip[];
@@ -48,6 +49,8 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClips, setSelectedClips] = useState<string[]>([]);
   const [selectedSnapshots, setSelectedSnapshots] = useState<string[]>([]);
+  const [itemToDelete, setItemToDelete] = useState<{ type: 'clip' | 'snapshot'; filename: string } | null>(null);
+  const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
 
   const [previewClip, setPreviewClip] = useState<string | null>(null);
   const [previewClipName, setPreviewClipName] = useState<string | null>(null);
@@ -162,14 +165,28 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
     }
   };
 
-  const handleBatchDeleteSelected = async () => {
+  const handleConfirmSingleDelete = () => {
+    if (!itemToDelete) return;
+    if (itemToDelete.type === 'clip') {
+      onDeleteClip(itemToDelete.filename);
+      setSelectedClips((prev) => prev.filter((fn) => fn !== itemToDelete.filename));
+    } else {
+      onDeleteSnapshot(itemToDelete.filename);
+      setSelectedSnapshots((prev) => prev.filter((fn) => fn !== itemToDelete.filename));
+    }
+    setItemToDelete(null);
+  };
+
+  const handleConfirmBatchDelete = () => {
     if (activeTab === 'clips') {
-      if (selectedClips.length === 0) return;
+      if (selectedClips.length === 0) {
+        setShowBatchDeleteModal(false);
+        return;
+      }
       const count = selectedClips.length;
       if (onBatchDeleteClips) {
         onBatchDeleteClips(selectedClips);
       } else {
-        // Fallback
         for (const fn of selectedClips) {
           onDeleteClip(fn);
         }
@@ -177,12 +194,14 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
       }
       setSelectedClips([]);
     } else {
-      if (selectedSnapshots.length === 0) return;
+      if (selectedSnapshots.length === 0) {
+        setShowBatchDeleteModal(false);
+        return;
+      }
       const count = selectedSnapshots.length;
       if (onBatchDeleteSnapshots) {
         onBatchDeleteSnapshots(selectedSnapshots);
       } else {
-        // Fallback
         for (const fn of selectedSnapshots) {
           onDeleteSnapshot(fn);
         }
@@ -190,6 +209,7 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
       }
       setSelectedSnapshots([]);
     }
+    setShowBatchDeleteModal(false);
   };
 
   const currentSelectedCount = activeTab === 'clips' ? selectedClips.length : selectedSnapshots.length;
@@ -305,7 +325,7 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
           {currentSelectedCount > 0 && !isViewer && (
             <div className="flex items-center gap-2 animate-in fade-in duration-150">
               <button
-                onClick={handleBatchDeleteSelected}
+                onClick={() => setShowBatchDeleteModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-medium transition-colors shadow-lg shadow-rose-900/30"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -439,7 +459,7 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
 
                           {!isViewer && (
                             <button
-                              onClick={() => onDeleteClip(clip.filename)}
+                              onClick={() => setItemToDelete({ type: 'clip', filename: clip.filename })}
                               className="p-1 rounded bg-[#161616] hover:bg-rose-950/80 text-zinc-500 hover:text-rose-400 transition-colors"
                               title="Delete Clip"
                             >
@@ -559,7 +579,7 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
 
                           {!isViewer && (
                             <button
-                              onClick={() => onDeleteSnapshot(snap.filename)}
+                              onClick={() => setItemToDelete({ type: 'snapshot', filename: snap.filename })}
                               className="p-1 rounded bg-[#161616] hover:bg-rose-950/80 text-zinc-500 hover:text-rose-400 transition-colors"
                               title="Delete Snapshot"
                             >
@@ -637,6 +657,37 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
           </div>
         </div>
       )}
+
+      {/* Single Item Delete Modal */}
+      <ConfirmModal
+        isOpen={itemToDelete !== null}
+        title={itemToDelete?.type === 'clip' ? 'Delete Video Recording' : 'Delete Snapshot'}
+        message={
+          <p>
+            Are you sure you want to permanently delete <strong className="text-white">"{itemToDelete?.filename}"</strong>?
+            This file will be deleted from storage.
+          </p>
+        }
+        confirmText="Delete File"
+        variant="danger"
+        onConfirm={handleConfirmSingleDelete}
+        onClose={() => setItemToDelete(null)}
+      />
+
+      {/* Batch Delete Modal */}
+      <ConfirmModal
+        isOpen={showBatchDeleteModal}
+        title={activeTab === 'clips' ? 'Delete Selected Video Recordings' : 'Delete Selected Snapshots'}
+        message={
+          <p>
+            Are you sure you want to permanently delete <strong className="text-white">{currentSelectedCount}</strong> {activeTab === 'clips' ? 'video recording(s)' : 'snapshot(s)'}?
+          </p>
+        }
+        confirmText={`Delete (${currentSelectedCount}) Files`}
+        variant="danger"
+        onConfirm={handleConfirmBatchDelete}
+        onClose={() => setShowBatchDeleteModal(false)}
+      />
     </div>
   );
 };
