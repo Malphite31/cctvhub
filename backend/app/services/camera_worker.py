@@ -62,14 +62,80 @@ class CameraWorker:
         self.worker_thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.worker_thread.start()
 
+    def _open_capture_device(self) -> Optional[cv2.VideoCapture]:
+        is_windows = platform.system() == "Windows"
+        source_val = str(self.source or self.device).strip()
+        is_ip_stream = any(source_val.lower().startswith(proto) for proto in ["rtsp://", "http://", "https://", "rtmp://", "rtsps://"])
+
+        if is_ip_stream:
+            logger.info(f"Opening IP Camera / RTSP stream: {source_val}")
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|analyzeduration;1000000|probesize;1000000"
+            cap = cv2.VideoCapture(source_val, cv2.CAP_FFMPEG)
+            if not cap.isOpened():
+                cap.release()
+                cap = cv2.VideoCapture(source_val)
+            return cap
+
+        try:
+            dev_idx = int(source_val)
+        except (ValueError, TypeError):
+            dev_idx = None
+
+        cap = None
+        if is_windows and dev_idx is not None:
+            cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
+            if not cap.isOpened():
+                cap.release()
+                time.sleep(0.15)
+                cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
+        elif dev_idx is not None:
+            # On Linux Proxmox, try V4L2 backend first, then standard backend
+            cap = cv2.VideoCapture(dev_idx, cv2.CAP_V4L2)
+            if not cap.isOpened():
+                cap.release()
+                time.sleep(0.15)
+                cap = cv2.VideoCapture(dev_idx)
+        else:
+            cap = cv2.VideoCapture(source_val)
+
+        if cap and cap.isOpened() and not is_ip_stream:
+            try:
+                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.requested_width)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.requested_height)
+                cap.set(cv2.CAP_PROP_FPS, self.requested_fps or 60)
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception:
+                pass
+
+        return cap
+
     def set_resolution(self, width: int, height: int, fps: int = 60) -> Dict[str, Any]:
-        """Dynamically switches resolution and FPS on the active camera without swapping devices."""
+        """Dynamically switches resolution and FPS on the active camera seamlessly."""
         logger.info(f"Changing resolution for Dev {self.device} to {width}x{height} @ {fps}fps")
         self.requested_width = width
         self.requested_height = height
         self.requested_fps = fps
         self.resolution = f"{width}x{height}"
-        self._need_reconnect = True
+
+        # 1. First attempt dynamic hardware property switch without tearing down the open device
+        applied_live = False
+        if self.cap and self.cap.isOpened():
+            try:
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                self.cap.set(cv2.CAP_PROP_FPS, fps)
+                actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                if actual_w > 0 and actual_h > 0:
+                    self.resolution = f"{actual_w}x{actual_h}"
+                    applied_live = True
+            except Exception:
+                pass
+
+        # 2. If the driver requires re-negotiating V4L2/DSHOW formats, schedule graceful re-open
+        if not applied_live:
+            self._need_reconnect = True
 
         if not self.is_running:
             self.start()
@@ -123,108 +189,67 @@ class CameraWorker:
         return img
 
     def _capture_loop(self):
-        is_windows = platform.system() == "Windows"
         target_fps = self.requested_fps or 60
         frame_delay = 1.0 / target_fps
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 75]
 
-        source_val = str(self.source or self.device).strip()
-        is_ip_stream = any(source_val.lower().startswith(proto) for proto in ["rtsp://", "http://", "https://", "rtmp://", "rtsps://"])
+        self.cap = self._open_capture_device()
 
-        if is_ip_stream:
-            logger.info(f"Opening IP Camera / RTSP stream: {source_val}")
-            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|analyzeduration;1000000|probesize;1000000"
-            self.cap = cv2.VideoCapture(source_val, cv2.CAP_FFMPEG)
-            if not self.cap.isOpened():
-                self.cap.release()
-                self.cap = cv2.VideoCapture(source_val)
-        else:
-            if is_windows:
-                try:
-                    dev_idx = int(source_val)
-                except (ValueError, TypeError):
-                    dev_idx = None
-
-                if dev_idx is not None:
-                    # Strictly use DirectShow on Windows for consistent hardware index binding
-                    self.cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
-                    if not self.cap.isOpened():
-                        self.cap.release()
-                        time.sleep(0.1)
-                        self.cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
-                else:
-                    self.cap = cv2.VideoCapture(source_val)
-            else:
-                try:
-                    dev_idx = int(source_val)
-                    self.cap = cv2.VideoCapture(dev_idx)
-                except (ValueError, TypeError):
-                    self.cap = cv2.VideoCapture(source_val)
-
-        if self.cap.isOpened():
-            if not is_ip_stream:
-                try:
-                    self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.requested_width)
-                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.requested_height)
-                    self.cap.set(cv2.CAP_PROP_FPS, target_fps)
-                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                except Exception:
-                    pass
-
+        if self.cap and self.cap.isOpened():
             actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or self.requested_width
             actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or self.requested_height
             self.resolution = f"{actual_w}x{actual_h}"
             self.is_hardware_active = True
-            logger.info(f"Camera {self.device} (source={source_val}) opened @ {self.resolution} target {target_fps}fps")
+            logger.info(f"Camera {self.device} opened @ {self.resolution} target {target_fps}fps")
         else:
             self.is_hardware_active = False
-            logger.warning(f"Could not open camera {self.device} (source={source_val}). Using simulated HUD.")
+            logger.warning(f"Could not open camera {self.device}. Standby mode active.")
 
         frame_count = 0
         fps_start = time.time()
-        fallback_idx = 0
+        consecutive_read_failures = 0
+        last_reconnect_attempt = time.time()
 
         while self.is_running:
             loop_start = time.time()
 
+            # Handle scheduled camera reconnection (e.g. resolution change)
             if getattr(self, "_need_reconnect", False):
                 self._need_reconnect = False
-                logger.info(f"Re-initializing camera {self.device} for {self.requested_width}x{self.requested_height} @ {self.requested_fps}fps")
+                logger.info(f"Re-opening camera {self.device} for {self.requested_width}x{self.requested_height} @ {self.requested_fps}fps")
                 if self.cap is not None:
                     try:
                         self.cap.release()
                     except Exception:
                         pass
-                time.sleep(0.05)
-                if is_ip_stream:
-                    self.cap = cv2.VideoCapture(source_val, cv2.CAP_FFMPEG)
-                elif is_windows and dev_idx is not None:
-                    self.cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
-                elif dev_idx is not None:
-                    self.cap = cv2.VideoCapture(dev_idx)
-                else:
-                    self.cap = cv2.VideoCapture(source_val)
+                    self.cap = None
 
-                if self.cap.isOpened():
-                    if not is_ip_stream:
-                        try:
-                            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-                            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.requested_width)
-                            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.requested_height)
-                            self.cap.set(cv2.CAP_PROP_FPS, self.requested_fps or 60)
-                            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                        except Exception:
-                            pass
+                time.sleep(0.15)
+                # Retry opening capture device up to 3 times
+                for attempt in range(3):
+                    self.cap = self._open_capture_device()
+                    if self.cap and self.cap.isOpened():
+                        break
+                    time.sleep(0.15)
+
+                if self.cap and self.cap.isOpened():
                     actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or self.requested_width
                     actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or self.requested_height
                     self.resolution = f"{actual_w}x{actual_h}"
                     self.is_hardware_active = True
-                    logger.info(f"Camera {self.device} re-opened @ {self.resolution}")
+                    consecutive_read_failures = 0
+                    logger.info(f"Camera {self.device} re-opened successfully @ {self.resolution}")
+                else:
+                    self.is_hardware_active = False
+                    logger.warning(f"Camera {self.device} re-open failed; entering auto-recovery.")
 
-            if self.is_hardware_active and self.cap and self.cap.isOpened():
+            # Hardware Capture Reading & Processing
+            if self.cap and self.cap.isOpened():
                 ret, frame = self.cap.read()
                 if ret and frame is not None:
+                    consecutive_read_failures = 0
+                    self.is_hardware_active = True
+
                     # 1. Flip Controls (Horizontal / Vertical)
                     if self.flip_h and self.flip_v:
                         frame = cv2.flip(frame, -1)
@@ -286,13 +311,35 @@ class CameraWorker:
                         self.latest_jpeg = buf.tobytes()
                         self.latest_detections = detections
                 else:
-                    self.is_hardware_active = False
+                    consecutive_read_failures += 1
+                    # Tolerant frame drop handling: during brief resolution change stutters, do not freeze or kill stream
+                    if consecutive_read_failures < 15:
+                        time.sleep(0.02)
+                    else:
+                        self.is_hardware_active = False
+                        if self.cap:
+                            try:
+                                self.cap.release()
+                            except Exception:
+                                pass
+                            self.cap = None
             else:
-                # Standby / searching state: generate at max 2 FPS to eliminate idle CPU load
+                # Standby / searching state & Auto-reconnection attempt every 1.5s
                 now_ts = time.time()
+                if now_ts - last_reconnect_attempt >= 1.5:
+                    last_reconnect_attempt = now_ts
+                    self.cap = self._open_capture_device()
+                    if self.cap and self.cap.isOpened():
+                        self.is_hardware_active = True
+                        consecutive_read_failures = 0
+                        actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or self.requested_width
+                        actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or self.requested_height
+                        self.resolution = f"{actual_w}x{actual_h}"
+                        logger.info(f"Camera {self.device} signal recovered @ {self.resolution}")
+
                 if (now_ts - self._last_standby_gen >= 0.5) or (self._cached_standby_jpeg is None):
                     self._last_standby_gen = now_ts
-                    frame = self._generate_standby_frame(f"SEARCHING FEED // DEV {self.device}")
+                    frame = self._generate_standby_frame(f"CONNECTING FEED // DEV {self.device}")
                     _, buf = cv2.imencode('.jpg', frame, encode_param)
                     self._cached_standby_jpeg = buf.tobytes()
                     with self.lock:
@@ -300,7 +347,7 @@ class CameraWorker:
                         self.latest_frame = frame
                         self.latest_jpeg = self._cached_standby_jpeg
                         self.latest_detections = []
-                time.sleep(0.1)
+                time.sleep(0.08)
                 continue
 
             frame_count += 1
