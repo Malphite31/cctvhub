@@ -9,6 +9,8 @@ import { EventsLogView } from './components/EventsLogView';
 import { FaceProfilesView } from './components/FaceProfilesView';
 import { StorageView } from './components/StorageView';
 import { SystemView } from './components/SystemView';
+import { UsersView } from './components/UsersView';
+import { SessionLogsView } from './components/SessionLogsView';
 import { SettingsModal } from './components/SettingsModal';
 import { EnrollFaceModal } from './components/EnrollFaceModal';
 import { EventDetailsModal } from './components/EventDetailsModal';
@@ -44,7 +46,7 @@ export const App: React.FC = () => {
     role: localStorage.getItem('cctv_role') || sessionStorage.getItem('cctv_role') || 'admin',
   }));
 
-  const [activeTab, setActiveTab] = useState<'live' | 'recordings' | 'events' | 'faces' | 'storage' | 'system'>('live');
+  const [activeTab, setActiveTab] = useState<'live' | 'recordings' | 'events' | 'faces' | 'storage' | 'system' | 'users' | 'sessions'>('live');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -582,6 +584,7 @@ export const App: React.FC = () => {
         storageLocation={storageLocation}
         isOpenMobile={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
+        userRole={currentUser.role}
       />
 
       {/* Right Column (Navbar + Main Content) */}
@@ -747,6 +750,20 @@ export const App: React.FC = () => {
               />
             </div>
           )}
+
+          {/* VIEW 7: USERS & FAMILY ACCESS */}
+          {activeTab === 'users' && (
+            <div className="flex-1 min-h-0 flex flex-col">
+              <UsersView onShowToast={showToast} />
+            </div>
+          )}
+
+          {/* VIEW 8: DEVICE & SESSION AUDIT LOGS */}
+          {activeTab === 'sessions' && (
+            <div className="flex-1 min-h-0 flex flex-col">
+              <SessionLogsView onShowToast={showToast} />
+            </div>
+          )}
         </main>
       </div>
 
@@ -789,7 +806,6 @@ export const App: React.FC = () => {
         audioDevices={audioDevices}
         activeAudioDevice={activeAudioDevice}
         onSelectAudioDevice={handleSelectAudioDevice}
-        storageLocation={storageLocation}
         onRefreshStorageLocation={fetchStorageLocation}
         onShowToast={showToast}
         userRole={currentUser.role}

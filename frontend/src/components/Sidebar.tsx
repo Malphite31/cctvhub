@@ -5,7 +5,9 @@ import {
   Bell,
   ScanFace,
   HardDrive,
-  Cpu
+  Cpu,
+  Users,
+  Activity
 } from 'lucide-react';
 import { SystemTelemetry, CameraDevice, StorageLocationInfo } from '../types';
 
@@ -17,6 +19,7 @@ interface SidebarProps {
   storageLocation: StorageLocationInfo | null;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
+  userRole?: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -27,12 +30,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   storageLocation,
   isOpenMobile = false,
   onCloseMobile,
+  userRole = 'admin',
 }) => {
+  const isViewer = userRole === 'viewer';
+
   const primaryNav = [
     { id: 'live', label: 'Live Surveillance', icon: Video },
     { id: 'recordings', label: 'Recordings', icon: Film },
     { id: 'events', label: 'Events', icon: Bell },
     { id: 'faces', label: 'Biometrics & Faces', icon: ScanFace },
+  ];
+
+  const adminNav = [
+    { id: 'users', label: 'Users & Family', icon: Users },
+    { id: 'sessions', label: 'Device & Session Logs', icon: Activity },
   ];
 
   const systemNav = [
@@ -47,8 +58,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const content = (
     <div className="flex flex-col justify-between h-full p-4 select-none text-xs bg-[#080808]">
       {/* Top Section: Brand Header & Navigation */}
-      <div className="space-y-6">
-        {/* Brand Header (Exact Reference Match) */}
+      <div className="space-y-5 overflow-y-auto pr-0.5 no-scrollbar">
+        {/* Brand Header */}
         <div className="flex items-center gap-3 px-2 py-1 h-12">
           {/* Blue Hexagonal Camera Reticle Logo */}
           <div className="shrink-0 flex items-center justify-center">
@@ -98,9 +109,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </div>
 
+        {/* Admin Navigation Section */}
+        {!isViewer && (
+          <div className="space-y-1">
+            <div className="px-3 py-1 text-[9px] font-mono font-bold tracking-wider text-zinc-500 uppercase">
+              Management & Logs
+            </div>
+            {adminNav.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    onTabChange(item.id);
+                    if (onCloseMobile) onCloseMobile();
+                  }}
+                  className={`w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl text-xs font-medium transition-all duration-150 ${
+                    isActive
+                      ? 'bg-[#161616] text-white font-semibold border-l-2 border-[#3B82F6] shadow-sm'
+                      : 'text-zinc-400 hover:bg-[#121212] hover:text-zinc-200 border-l-2 border-transparent'
+                  }`}
+                >
+                  <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-[#3B82F6]' : 'text-zinc-400'}`} />
+                  <span className="truncate">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* System Navigation Section */}
         <div className="space-y-1">
-          <div className="px-3 py-1.5 text-[9px] font-mono font-bold tracking-wider text-zinc-500 uppercase">
+          <div className="px-3 py-1 text-[9px] font-mono font-bold tracking-wider text-zinc-500 uppercase">
             System
           </div>
           {systemNav.map((item) => {

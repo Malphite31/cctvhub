@@ -97,11 +97,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   const getPageTitle = (tab: string) => {
     switch (tab) {
       case 'live': return 'Live Surveillance';
-      case 'recordings': return 'Recordings';
-      case 'events': return 'Events';
+      case 'recordings': return 'Recordings Archive';
+      case 'events': return 'Surveillance Events';
       case 'faces': return 'Biometrics & Faces';
-      case 'storage': return 'Storage';
-      case 'system': return 'System';
+      case 'storage': return 'Storage Infrastructure';
+      case 'system': return 'System Telemetry';
+      case 'users': return 'Users & Family Access';
+      case 'sessions': return 'Device & Session Audit Logs';
       default: return 'Live Surveillance';
     }
   };
