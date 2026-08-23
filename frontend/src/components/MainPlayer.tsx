@@ -168,6 +168,86 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     hud_theme: 'cyber_blue',
   });
 
+  // Mobile Orientation & Fullscreen Auto Landscape
+  const [isMobilePortrait, setIsMobilePortrait] = useState(false);
+  const [forceLandscapeRotate, setForceLandscapeRotate] = useState(true);
+
+  useEffect(() => {
+    const checkOrientation = () => {
+      const isMobile = window.innerWidth < 1024 || 'ontouchstart' in window;
+      const isPortrait = window.innerHeight > window.innerWidth;
+      setIsMobilePortrait(isMobile && isPortrait);
+    };
+
+    checkOrientation();
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', checkOrientation);
+    return () => {
+      window.removeEventListener('resize', checkOrientation);
+      window.removeEventListener('orientationchange', checkOrientation);
+    };
+  }, []);
+
+  const lockLandscape = async () => {
+    try {
+      if (screen.orientation && (screen.orientation as any).lock) {
+        await (screen.orientation as any).lock('landscape');
+      } else if ((screen as any).lockOrientation) {
+        (screen as any).lockOrientation('landscape');
+      } else if ((screen as any).mozLockOrientation) {
+        (screen as any).mozLockOrientation('landscape');
+      } else if ((screen as any).msLockOrientation) {
+        (screen as any).msLockOrientation('landscape');
+      }
+    } catch {
+      // Ignore if screen orientation lock is unsupported or permission is denied
+    }
+  };
+
+  const unlockOrientation = () => {
+    try {
+      if (screen.orientation && (screen.orientation as any).unlock) {
+        (screen.orientation as any).unlock();
+      } else if ((screen as any).unlockOrientation) {
+        (screen as any).unlockOrientation();
+      } else if ((screen as any).mozUnlockOrientation) {
+        (screen as any).mozUnlockOrientation();
+      } else if ((screen as any).msUnlockOrientation) {
+        (screen as any).msUnlockOrientation();
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isDocFull = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+      if (!isDocFull) {
+        setIsFullscreen(false);
+        unlockOrientation();
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+      unlockOrientation();
+    };
+  }, []);
+
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const micMenuRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -406,7 +486,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
       ? `${networkSpeed.toFixed(1)} Mbps`
       : `${(18.5 + (Math.sin(Date.now() / 3000) * 1.8)).toFixed(1)} Mbps`;
 
-  const handleToggleFullscreen = () => {
+  const handleToggleFullscreen = async () => {
     const el = playerContainerRef.current;
     const isDocFull = !!(
       document.fullscreenElement ||
@@ -416,33 +496,44 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     );
 
     if (isFullscreen || isDocFull) {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-      } else if ((document as any).webkitExitFullscreen) {
-        (document as any).webkitExitFullscreen();
-      } else if ((document as any).mozCancelFullScreen) {
-        (document as any).mozCancelFullScreen();
-      } else if ((document as any).msExitFullscreen) {
-        (document as any).msExitFullscreen();
-      }
       setIsFullscreen(false);
+      unlockOrientation();
+      try {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen().catch(() => {});
+        } else if ((document as any).webkitExitFullscreen) {
+          (document as any).webkitExitFullscreen();
+        } else if ((document as any).mozCancelFullScreen) {
+          (document as any).mozCancelFullScreen();
+        } else if ((document as any).msExitFullscreen) {
+          (document as any).msExitFullscreen();
+        }
+      } catch {}
     } else {
       setIsFullscreen(true);
       if (el) {
-        if (el.requestFullscreen) {
-          el.requestFullscreen().catch(() => {
-            if (document.documentElement.requestFullscreen) {
-              document.documentElement.requestFullscreen().catch(() => {});
-            }
-          });
-        } else if ((el as any).webkitRequestFullscreen) {
-          (el as any).webkitRequestFullscreen();
-        } else if ((el as any).mozRequestFullScreen) {
-          (el as any).mozRequestFullScreen();
-        } else if (document.documentElement.requestFullscreen) {
-          document.documentElement.requestFullscreen().catch(() => {});
+        try {
+          if (el.requestFullscreen) {
+            await el.requestFullscreen().catch(() => {
+              if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen().catch(() => {});
+              }
+            });
+          } else if ((el as any).webkitRequestFullscreen) {
+            (el as any).webkitRequestFullscreen();
+          } else if ((el as any).mozRequestFullScreen) {
+            (el as any).mozRequestFullScreen();
+          } else if (document.documentElement.requestFullscreen) {
+            await document.documentElement.requestFullscreen().catch(() => {});
+          }
+        } catch {
+          if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(() => {});
+          }
         }
       }
+      // Lock orientation to landscape on mobile devices
+      await lockLandscape();
     }
   };
 
@@ -947,9 +1038,38 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
       {/* 2. Main Live Video Viewport Container */}
       <div
         ref={playerContainerRef}
+        style={
+          isFullscreen && isMobilePortrait && forceLandscapeRotate
+            ? {
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                width: '100dvh',
+                height: '100dvw',
+                transform: 'translate(-50%, -50%) rotate(90deg)',
+                transformOrigin: 'center center',
+                zIndex: 99999,
+                maxWidth: 'none',
+                maxHeight: 'none',
+              }
+            : isFullscreen
+            ? {
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: '100dvw',
+                height: '100dvh',
+                zIndex: 99999,
+                maxWidth: 'none',
+                maxHeight: 'none',
+              }
+            : undefined
+        }
         className={`relative w-full flex-1 min-h-0 bg-black overflow-hidden flex items-center justify-center group ${
           isFullscreen
-            ? 'fixed inset-0 z-[99999] h-[100dvh] w-[100dvw] max-h-none max-w-none rounded-none border-none aspect-auto m-0 p-0 top-0 left-0 right-0 bottom-0'
+            ? 'h-[100dvh] w-[100dvw] max-h-none max-w-none rounded-none border-none aspect-auto m-0 p-0'
             : 'rounded-xl border border-[#222222] aspect-video'
         }`}
       >
@@ -1166,16 +1286,30 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
               </div>
             )}
 
-            {/* Floating Exit Button for Fullscreen Mode */}
+            {/* Floating Exit & Rotate Buttons for Fullscreen Mode */}
             {isFullscreen && (
-              <button
-                type="button"
-                onClick={handleToggleFullscreen}
-                className="fixed top-4 right-4 z-[10000] p-2.5 rounded-full bg-black/80 text-white border border-white/20 hover:bg-black transition-colors shadow-2xl backdrop-blur"
-                title="Exit Fullscreen"
-              >
-                <Minimize2 className="h-5 w-5 text-white" />
-              </button>
+              <div className="fixed top-4 right-4 z-[10000] flex items-center gap-2">
+                {isMobilePortrait && (
+                  <button
+                    type="button"
+                    onClick={() => setForceLandscapeRotate(!forceLandscapeRotate)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-black/85 text-white border border-white/20 hover:bg-black transition-colors shadow-2xl backdrop-blur-md text-[11px] font-mono"
+                    title="Toggle Auto-Landscape Rotation"
+                  >
+                    <RotateCw className={`h-3.5 w-3.5 ${forceLandscapeRotate ? 'text-[#3B82F6]' : 'text-zinc-400'}`} />
+                    <span>{forceLandscapeRotate ? '90° Landscape' : 'Portrait'}</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleToggleFullscreen}
+                  className="p-2.5 rounded-full bg-black/85 text-white border border-white/20 hover:bg-black transition-colors shadow-2xl backdrop-blur-md"
+                  title="Exit Fullscreen"
+                >
+                  <Minimize2 className="h-4 w-4 text-white" />
+                </button>
+              </div>
             )}
           </>
         )}
