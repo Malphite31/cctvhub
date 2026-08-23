@@ -60,6 +60,7 @@ app.include_router(trackers.router, prefix="/api/trackers", tags=["Custom Object
 app.include_router(cameras.router, prefix="/api/cameras", tags=["Camera Management & Hardware"])
 app.include_router(motion.router, prefix="/api/motion", tags=["Motion Detection & Triggers"])
 app.include_router(telemetry.router, prefix="/api/system", tags=["System & Updates"])
+app.include_router(stream.router, prefix="/api/audio", tags=["Audio & Microphone"])
 
 # Serve frontend build if exists
 FRONTEND_PATHS = [

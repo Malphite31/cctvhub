@@ -60,8 +60,8 @@ interface MainPlayerProps {
   volume: number;
   onChangeVolume: (vol: number) => void;
   audioDevices: any[];
-  activeAudioDevice: number | null;
-  onSelectAudioDevice: (index: number) => void;
+  activeAudioDevice: number | string | null;
+  onSelectAudioDevice: (index: any) => void;
   gridMode: '1x1' | '2x2' | '1+3';
   onChangeGridMode: (mode: '1x1' | '2x2' | '1+3') => void;
   onReconnect: () => void;
@@ -1280,12 +1280,12 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                 <span className="text-[11px] text-zinc-400 block font-mono">Input Microphone Device:</span>
                 <div className="relative">
                   <select
-                    value={activeAudioDevice !== null ? activeAudioDevice : ''}
-                    onChange={(e) => onSelectAudioDevice(Number(e.target.value))}
+                    value={activeAudioDevice !== null && activeAudioDevice !== undefined ? String(activeAudioDevice) : ''}
+                    onChange={(e) => onSelectAudioDevice(e.target.value)}
                     className="w-full bg-[#18181b] hover:bg-[#202024] border border-[#2a2a30] rounded-lg pl-3 pr-8 py-2 text-zinc-200 text-xs outline-none focus:border-[#3B82F6] font-mono appearance-none transition-colors cursor-pointer"
                   >
                     {audioDevices.map((d: any) => (
-                      <option key={d.index} value={d.index}>{d.name}</option>
+                      <option key={String(d.index)} value={String(d.index)}>{d.name}</option>
                     ))}
                   </select>
                   <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400 pointer-events-none" />

@@ -41,8 +41,8 @@ interface SettingsModalProps {
   activeDevice: string;
   onSelectDevice: (dev: string) => void;
   audioDevices: any[];
-  activeAudioDevice: number | null;
-  onSelectAudioDevice: (index: number) => void;
+  activeAudioDevice: number | string | null;
+  onSelectAudioDevice: (index: any) => void;
   cloudflareStatus?: string;
   onRefreshStorageLocation: () => void;
   onShowToast: (msg: string, isErr?: boolean) => void;
@@ -669,35 +669,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
-                  {audioDevices.map((mic) => (
-                    <div
-                      key={mic.index}
-                      onClick={() => {
-                        onSelectAudioDevice(mic.index);
-                        onShowToast(`Switched microphone to ${mic.name}`);
-                      }}
-                      className={`flex items-center justify-between p-2 rounded border cursor-pointer transition-all ${
-                        activeAudioDevice === mic.index
-                          ? 'border-emerald-500 bg-emerald-600/10 text-white'
-                          : 'border-zinc-800/80 bg-zinc-950 hover:bg-zinc-900 text-zinc-300'
-                      }`}
-                    >
-                      <div className="truncate min-w-0 pr-2">
-                        <p className="font-medium text-xs text-zinc-200 truncate">{mic.name}</p>
-                        <span className="text-[10px] text-zinc-500 font-mono">
-                          Index: {mic.index} • {mic.channels} ch • {mic.default_samplerate}Hz
-                        </span>
-                      </div>
-
-                      <span
-                        className={`text-[10px] px-2 py-0.5 rounded font-mono font-medium shrink-0 ${
-                          activeAudioDevice === mic.index ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'
+                  {audioDevices.map((mic) => {
+                    const isSelected = activeAudioDevice !== null && activeAudioDevice !== undefined && String(activeAudioDevice) === String(mic.index);
+                    return (
+                      <div
+                        key={String(mic.index)}
+                        onClick={() => {
+                          onSelectAudioDevice(mic.index);
+                          onShowToast(`Switched microphone to ${mic.name}`);
+                        }}
+                        className={`flex items-center justify-between p-2 rounded border cursor-pointer transition-all ${
+                          isSelected
+                            ? 'border-emerald-500 bg-emerald-600/10 text-white'
+                            : 'border-zinc-800/80 bg-zinc-950 hover:bg-zinc-900 text-zinc-300'
                         }`}
                       >
-                        {activeAudioDevice === mic.index ? 'ACTIVE' : 'SELECT'}
-                      </span>
-                    </div>
-                  ))}
+                        <div className="truncate min-w-0 pr-2">
+                          <p className="font-medium text-xs text-zinc-200 truncate">{mic.name}</p>
+                          <span className="text-[10px] text-zinc-500 font-mono">
+                            Device: {mic.index} • {mic.channels} ch • {mic.default_samplerate}Hz
+                          </span>
+                        </div>
+
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded font-mono font-medium shrink-0 ${
+                            isSelected ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'
+                          }`}
+                        >
+                          {isSelected ? 'ACTIVE' : 'SELECT'}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

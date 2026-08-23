@@ -114,9 +114,15 @@ def set_adjustments(
     }
 
 @router.post("/switch-audio")
-def switch_audio(device_index: int = Query(..., description="Audio input device index")):
+@router.post("/audio/device")
+@router.post("/audio/switch")
+def switch_audio(
+    device_index: Optional[Any] = Query(None, description="Audio input device index or ALSA string"),
+    index: Optional[Any] = Query(None, description="Alias for device index")
+):
     """Switch active microphone input device."""
-    return audio_worker.switch_device(device_index)
+    target_device = device_index if device_index is not None else index
+    return audio_worker.switch_device(target_device)
 
 @router.get("/live")
 async def live_stream(dev: str = Query("0", description="Camera device index")):

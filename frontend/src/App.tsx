@@ -68,7 +68,7 @@ export const App: React.FC = () => {
 
   // Audio Devices & State
   const [audioDevices, setAudioDevices] = useState<any[]>([]);
-  const [activeAudioDevice, setActiveAudioDevice] = useState<number | null>(null);
+  const [activeAudioDevice, setActiveAudioDevice] = useState<number | string | null>(null);
 
   // Biometrics & Events State
   const [faces, setFaces] = useState<EnrolledPerson[]>([]);
@@ -343,12 +343,14 @@ export const App: React.FC = () => {
     showToast(`Switched active camera to Dev ${dev}`);
   };
 
-  const handleSelectAudioDevice = async (devIndex: number) => {
+  const handleSelectAudioDevice = async (devIndex: number | string) => {
     setActiveAudioDevice(devIndex);
     try {
-      const res = await fetch(`/api/audio/device?index=${devIndex}`, { method: 'POST' });
+      const res = await fetch(`/api/stream/switch-audio?device_index=${encodeURIComponent(devIndex)}`, { method: 'POST' });
       if (res.ok) {
-        showToast(`Switched audio input to Device #${devIndex}`);
+        showToast(`Switched audio input device`);
+      } else {
+        showToast('Error switching microphone', true);
       }
     } catch {
       showToast('Error switching microphone', true);
