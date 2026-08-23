@@ -34,7 +34,10 @@ class S3StorageService:
         return default
 
     def save_config(self, new_config: Dict[str, Any]) -> Dict[str, Any]:
-        self.config.update(new_config)
+        cfg_copy = dict(new_config)
+        if cfg_copy.get("secret_key") in ["••••••••", "••••"]:
+            cfg_copy["secret_key"] = self.config.get("secret_key", "")
+        self.config.update(cfg_copy)
         try:
             with open(CONFIG_FILE, "w") as f:
                 json.dump(self.config, f, indent=2)
@@ -49,7 +52,10 @@ class S3StorageService:
         return masked
 
     def _get_client(self, override_config: Optional[Dict[str, Any]] = None):
-        cfg = override_config or self.config
+        cfg = dict(override_config or self.config)
+        if cfg.get("secret_key") in ["••••••••", "••••"]:
+            cfg["secret_key"] = self.config.get("secret_key", "")
+
         endpoint = cfg.get("endpoint_url") or None
         region = cfg.get("region") or "us-east-1"
         
@@ -64,10 +70,13 @@ class S3StorageService:
         )
 
     def test_connection(self, config_to_test: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        cfg = config_to_test or self.config
+        cfg = dict(config_to_test or self.config)
+        if cfg.get("secret_key") in ["••••••••", "••••"]:
+            cfg["secret_key"] = self.config.get("secret_key", "")
+
         bucket = cfg.get("bucket_name")
         if not bucket or not cfg.get("access_key") or not cfg.get("secret_key"):
-            return {"success": False, "error": "Missing bucket name or credentials"}
+            return {"success": False, "error": "Missing bucket name or access/secret credentials"}
 
         try:
             client = self._get_client(cfg)

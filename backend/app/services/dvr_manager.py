@@ -17,7 +17,7 @@ except Exception:
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from ..core.config import settings
-from ..core.database import log_event
+from ..core.database import log_event, get_db
 from .camera_worker import camera_worker
 from .audio_worker import audio_worker
 from .s3_storage import s3_storage
@@ -30,6 +30,19 @@ class DVRManager:
         self.recording_start_time: Optional[float] = None
         self._record_thread: Optional[threading.Thread] = None
         self._custom_storage_dir: Optional[Path] = None
+
+        # Load persisted custom storage directory if previously configured
+        try:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT value FROM system_config WHERE key = 'custom_storage_dir'")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    p = Path(row[0])
+                    p.mkdir(parents=True, exist_ok=True)
+                    self._custom_storage_dir = p
+        except Exception:
+            pass
 
         # Transcode any legacy mp4v recordings to browser-compatible H.264 in background
         t = threading.Thread(target=self._transcode_legacy_recordings, daemon=True)
@@ -48,12 +61,11 @@ class DVRManager:
     def _transcode_legacy_recordings(self):
         """Checks existing recordings and transcodes to standard H.264 if needed."""
         try:
-            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe() if imageio_ffmpeg else "ffmpeg"
             rec_dir = self.get_recordings_dir()
             for mp4_file in list(rec_dir.glob("*.mp4")):
-                if mp4_file.name.endswith(".raw.mp4"):
+                if mp4_file.name.endswith(".raw.mp4") or mp4_file.name.endswith(".h264tmp.mp4"):
                     continue
-                # Quick inspection: if file is not H264 with faststart, transcode it
                 temp_out = mp4_file.with_suffix('.h264tmp.mp4')
                 cmd = [
                     ffmpeg_exe, "-y",
@@ -75,6 +87,16 @@ class DVRManager:
             new_path = Path(path_str).resolve()
             new_path.mkdir(parents=True, exist_ok=True)
             self._custom_storage_dir = new_path
+            try:
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT OR REPLACE INTO system_config (key, value) VALUES ('custom_storage_dir', ?)",
+                        (str(new_path),)
+                    )
+                    conn.commit()
+            except Exception:
+                pass
             return {
                 "success": True,
                 "current_path": str(new_path),
@@ -96,10 +118,18 @@ class DVRManager:
 
     def _auto_sync(self, file_path: Path):
         def _sync_worker():
-            if s3_storage.config.get("enabled") and s3_storage.config.get("auto_upload"):
-                s3_storage.upload_file(file_path)
-            if samba_storage.config.get("enabled") and samba_storage.config.get("auto_sync"):
-                samba_storage.sync_file(file_path)
+            if not file_path.exists() or file_path.stat().st_size == 0:
+                return
+            try:
+                if s3_storage.config.get("enabled"):
+                    s3_storage.upload_file(file_path)
+            except Exception:
+                pass
+            try:
+                if samba_storage.config.get("enabled"):
+                    samba_storage.sync_file(file_path)
+            except Exception:
+                pass
 
         t = threading.Thread(target=_sync_worker, daemon=True)
         t.start()
@@ -108,9 +138,12 @@ class DVRManager:
         if not filename:
             filename = f"snapshot_{camera_id}_{int(time.time())}.jpg"
         filepath = self.get_snapshots_dir() / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
 
-        from .camera_worker import camera_manager
-        worker = camera_manager.get_worker(camera_id)
+        from .camera_worker import camera_manager, camera_worker
+        worker = camera_manager.get_worker(camera_id) if hasattr(camera_manager, "get_worker") else camera_worker
+        if worker is None:
+            worker = camera_worker
         frame = worker.get_latest_frame()
 
         if frame is not None:
@@ -140,28 +173,43 @@ class DVRManager:
         if not filename:
             filename = f"clip_{camera_id}_{int(time.time())}.mp4"
         filepath = self.get_recordings_dir() / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
         raw_filepath = filepath.with_suffix('.raw.mp4')
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         writer = None
         start_t = time.time()
 
-        from .camera_worker import camera_manager
-        worker = camera_manager.get_worker(camera_id)
+        from .camera_worker import camera_manager, camera_worker
+        worker = camera_manager.get_worker(camera_id) if hasattr(camera_manager, "get_worker") else camera_worker
+        if worker is None:
+            worker = camera_worker
 
+        frames_written = 0
         while time.time() - start_t < duration_seconds:
             frame = worker.get_latest_frame()
             if frame is not None:
                 if writer is None:
                     h, w = frame.shape[:2]
-                    writer = cv2.VideoWriter(str(raw_filepath), fourcc, 30.0, (w, h))
-                writer.write(frame)
-            time.sleep(1.0 / 30.0)
+                    for codec in ['mp4v', 'XVID', 'MJPG']:
+                        try:
+                            fourcc = cv2.VideoWriter_fourcc(*codec)
+                            writer = cv2.VideoWriter(str(raw_filepath), fourcc, 25.0, (w, h))
+                            if writer and writer.isOpened():
+                                break
+                        except Exception:
+                            pass
+                if writer and writer.isOpened():
+                    writer.write(frame)
+                    frames_written += 1
+            time.sleep(1.0 / 25.0)
 
         if writer:
-            writer.release()
+            try:
+                writer.release()
+            except Exception:
+                pass
             writer = None
 
-        if raw_filepath.exists() and raw_filepath.stat().st_size > 0:
+        if raw_filepath.exists() and raw_filepath.stat().st_size > 0 and frames_written > 0:
             try:
                 ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe() if imageio_ffmpeg else "ffmpeg"
                 cmd = [
