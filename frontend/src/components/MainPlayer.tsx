@@ -777,80 +777,85 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
             {/* 3. Bottom Player Controls Dock */}
             <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1 sm:gap-2 z-30 pointer-events-none">
-              <div className="flex items-center gap-1 sm:gap-1.5 pointer-events-auto flex-wrap">
+              {/* Left Action Buttons Dock */}
+              <div className="flex items-center gap-1 sm:gap-1.5 pointer-events-auto overflow-x-auto no-scrollbar py-0.5 max-w-[calc(100%-76px)] sm:max-w-[calc(100%-140px)]">
                 {/* Pause / Play */}
                 <button
                   onClick={handleTogglePlay}
-                  className="flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1 rounded bg-black/80 hover:bg-black text-white text-[11px] font-medium border border-[#333333] backdrop-blur transition-colors"
+                  className="flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-md bg-black/85 hover:bg-black text-white text-[11px] font-medium border border-[#333333] backdrop-blur transition-colors shrink-0"
                   title={isPlaying ? 'Pause Feed' : 'Play Feed'}
                 >
-                  {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                  {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                   <span className="hidden sm:inline">{isPlaying ? 'Pause' : 'Play'}</span>
                 </button>
 
                 {/* Quick Snapshot */}
                 <button
                   onClick={onSnapshot}
-                  className="flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1 rounded bg-black/80 hover:bg-black text-white text-[11px] font-medium border border-[#333333] backdrop-blur transition-colors"
+                  className="flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-md bg-black/85 hover:bg-black text-white text-[11px] font-medium border border-[#333333] backdrop-blur transition-colors shrink-0"
                   title="Capture Snapshot"
                 >
-                  <Camera className="h-3 w-3 text-[#3B82F6]" />
+                  <Camera className="h-3.5 w-3.5 text-[#3B82F6]" />
                   <span className="hidden sm:inline">Snapshot</span>
                 </button>
 
                 {/* Video Record */}
                 <button
                   onClick={onToggleRecording}
-                  className={`flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1 rounded text-[11px] font-medium border backdrop-blur transition-colors ${
+                  className={`flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-md text-[11px] font-medium border backdrop-blur transition-colors shrink-0 ${
                     isRecording
                       ? 'bg-rose-600 text-white border-rose-500 animate-pulse'
-                      : 'bg-black/80 hover:bg-black text-white border-[#333333]'
+                      : 'bg-black/85 hover:bg-black text-white border-[#333333]'
                   }`}
                   title={isRecording ? 'Stop Recording' : 'Start Recording'}
                 >
-                  <Disc className={`h-3 w-3 ${isRecording ? 'text-white' : 'text-rose-400'}`} />
-                  <span>{isRecording ? `${recordingElapsed}s` : 'Record'}</span>
+                  <Disc className={`h-3.5 w-3.5 ${isRecording ? 'text-white' : 'text-rose-400'}`} />
+                  {isRecording ? (
+                    <span className="font-mono">{recordingElapsed}s</span>
+                  ) : (
+                    <span className="hidden sm:inline">Record</span>
+                  )}
                 </button>
 
                 {/* Select Object / Door to Track button */}
                 <button
                   onClick={() => setIsDrawingMode(!isDrawingMode)}
-                  className={`flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1 rounded text-[11px] font-medium border backdrop-blur transition-colors ${
+                  className={`flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-md text-[11px] font-medium border backdrop-blur transition-colors shrink-0 ${
                     isDrawingMode
                       ? 'bg-[#3B82F6] text-white border-[#3B82F6] animate-pulse'
-                      : 'bg-black/80 hover:bg-black text-zinc-300 border-[#333333]'
+                      : 'bg-black/85 hover:bg-black text-zinc-300 border-[#333333]'
                   }`}
                   title="Select / Draw Object or Door to Track"
                 >
-                  <Plus className="h-3 w-3 text-[#3B82F6]" />
-                  <span className="hidden sm:inline">{isDrawingMode ? 'Cancel Selection' : 'Select Object'}</span>
+                  <Plus className="h-3.5 w-3.5 text-[#3B82F6]" />
+                  <span className="hidden sm:inline">{isDrawingMode ? 'Cancel' : 'Select'}</span>
                 </button>
 
                 {/* HUD Visibility Toggle (Show / Hide Overlay) */}
                 <button
                   onClick={() => handleUpdateTrackerSettings({ enabled: !trackerSettings.enabled })}
-                  className={`flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1 rounded text-[11px] font-medium border backdrop-blur transition-colors ${
+                  className={`flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-md text-[11px] font-medium border backdrop-blur transition-colors shrink-0 ${
                     trackerSettings.enabled
                       ? 'bg-blue-600/20 text-[#3B82F6] border-[#3B82F6]/50 hover:bg-blue-600/30'
-                      : 'bg-black/80 hover:bg-black text-zinc-400 border-[#333333]'
+                      : 'bg-black/85 hover:bg-black text-zinc-400 border-[#333333]'
                   }`}
                   title={trackerSettings.enabled ? 'Hide Tracker HUD Overlay' : 'Show Tracker HUD Overlay'}
                 >
-                  {trackerSettings.enabled ? <Eye className="h-3 w-3 text-[#3B82F6]" /> : <EyeOff className="h-3 w-3 text-zinc-400" />}
+                  {trackerSettings.enabled ? <Eye className="h-3.5 w-3.5 text-[#3B82F6]" /> : <EyeOff className="h-3.5 w-3.5 text-zinc-400" />}
                   <span className="hidden md:inline">{trackerSettings.enabled ? 'HUD On' : 'HUD Off'}</span>
                 </button>
 
                 {/* Motion Detector Button & Settings */}
                 <button
                   onClick={() => setIsMotionModalOpen(true)}
-                  className={`flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1 rounded text-[11px] font-medium border backdrop-blur transition-colors ${
+                  className={`flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-md text-[11px] font-medium border backdrop-blur transition-colors shrink-0 ${
                     isMotionDetected
                       ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 hover:bg-amber-500/30'
-                      : 'bg-black/80 hover:bg-black text-zinc-300 border-[#333333]'
+                      : 'bg-black/85 hover:bg-black text-zinc-300 border-[#333333]'
                   }`}
                   title="Motion Detector & Trigger Actions (Snapshot / Video Recording)"
                 >
-                  <Activity className={`h-3 w-3 ${isMotionDetected ? 'text-amber-400 animate-pulse' : 'text-zinc-400'}`} />
+                  <Activity className={`h-3.5 w-3.5 ${isMotionDetected ? 'text-amber-400 animate-pulse' : 'text-zinc-400'}`} />
                   <span className="hidden md:inline font-mono">Motion</span>
                   {isMotionDetected && (
                     <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
@@ -858,20 +863,20 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                 </button>
 
                 {/* Mute / Audio with Volume Slider */}
-                <div className="relative" ref={micMenuRef}>
-                  <div className="flex items-center rounded bg-black/80 border border-[#333333] overflow-hidden backdrop-blur">
+                <div className="relative shrink-0" ref={micMenuRef}>
+                  <div className="flex items-center rounded-md bg-black/85 border border-[#333333] overflow-hidden backdrop-blur">
                     <button
                       onClick={onToggleMute}
-                      className="flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1 text-[11px] font-medium text-white hover:bg-white/10 transition-colors"
+                      className="flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 text-[11px] font-medium text-white hover:bg-white/10 transition-colors"
                       title={!isMuted ? 'Mute Microphone' : 'Enable Live Audio'}
                     >
-                      {!isMuted ? <Volume2 className="h-3 w-3 text-emerald-400" /> : <VolumeX className="h-3 w-3 text-zinc-400" />}
-                      <span className="hidden md:inline">{!isMuted ? 'Audio' : 'Muted'}</span>
+                      {!isMuted ? <Volume2 className="h-3.5 w-3.5 text-emerald-400" /> : <VolumeX className="h-3.5 w-3.5 text-zinc-400" />}
+                      <span className="hidden sm:inline">{!isMuted ? 'Audio' : 'Muted'}</span>
                     </button>
 
                     <button
                       onClick={() => setShowMicMenu(!showMicMenu)}
-                      className="px-1.5 py-1 border-l border-[#333333] hover:bg-white/10 text-zinc-400 hover:text-white"
+                      className="p-1 sm:px-1.5 sm:py-1 border-l border-[#333333] hover:bg-white/10 text-zinc-400 hover:text-white"
                       title="Audio Device & Volume"
                     >
                       <ChevronDown className="h-3 w-3" />
@@ -880,7 +885,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
                   {/* Mic Volume Popup */}
                   {showMicMenu && (
-                    <div className="absolute bottom-full mb-2 right-0 md:left-0 md:right-auto w-56 sm:w-64 max-w-[calc(100vw-36px)] rounded-xl border border-[#222222] bg-[#121212]/95 backdrop-blur-md p-3 shadow-2xl space-y-2.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                    <div className="absolute bottom-full mb-2 left-0 w-56 sm:w-64 max-w-[calc(100vw-36px)] rounded-xl border border-[#222222] bg-[#121212]/95 backdrop-blur-md p-3 shadow-2xl space-y-2.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
                       <div className="flex justify-between items-center text-[11px] font-semibold text-white border-b border-[#222222] pb-1.5">
                         <span className="flex items-center gap-1.5"><Mic className="h-3.5 w-3.5 text-emerald-400" /> Microphone</span>
                         <span className="font-mono text-[10px] text-zinc-400">{volume}%</span>
@@ -936,15 +941,15 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
               </div>
 
               {/* Bottom-Right Controls: Adjustments & Fullscreen */}
-              <div className="pointer-events-auto shrink-0 flex items-center gap-1.5">
+              <div className="pointer-events-auto shrink-0 flex items-center gap-1 sm:gap-1.5">
                 {/* Tune Camera Adjustments Popover */}
                 <div className="relative" ref={adjustmentsRef}>
                   <button
                     onClick={() => setShowAdjustmentsModal(!showAdjustmentsModal)}
-                    className={`flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1 rounded text-white text-[11px] font-medium border backdrop-blur transition-colors ${
+                    className={`flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1 rounded-md text-white text-[11px] font-medium border backdrop-blur transition-colors ${
                       showAdjustmentsModal || flipH || flipV || rotation !== 0 || zoom > 1.01 || brightness !== 50 || contrast !== 50 || saturation !== 50
                         ? 'bg-[#3B82F6] border-[#3B82F6]'
-                        : 'bg-black/80 hover:bg-black border-[#333333]'
+                        : 'bg-black/85 hover:bg-black border-[#333333]'
                     }`}
                     title="Camera Adjustments (Flip, Crop, Zoom, Rotate, Color)"
                   >
@@ -1145,7 +1150,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
                 <button
                   onClick={handleToggleFullscreen}
-                  className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1 rounded bg-black/80 hover:bg-black text-white text-[11px] font-medium border border-[#333333] backdrop-blur transition-colors"
+                  className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1 rounded-md bg-black/85 hover:bg-black text-white text-[11px] font-medium border border-[#333333] backdrop-blur transition-colors shrink-0"
                   title="Toggle Video Fullscreen"
                 >
                   {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
