@@ -34,12 +34,19 @@ if [ "$IS_SYSTEMD" = true ]; then
         pip3 install -r backend/requirements.txt
     fi
 
-    # Compile React Frontend
-    echo ">> Compiling React Frontend..."
-    if command -v npm &> /dev/null && [ -d "frontend" ]; then
+    # Synchronize Pre-built Frontend Distribution
+    if [ -d "backend/frontend_dist" ]; then
+        echo ">> Synchronizing pre-built React frontend bundle..."
+        mkdir -p frontend/dist
+        cp -r backend/frontend_dist/* frontend/dist/ 2>/dev/null || true
+    fi
+
+    # Compile React Frontend if Node is installed
+    if command -v npm &> /dev/null && [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
+        echo ">> Compiling React Frontend with NPM..."
         cd frontend
-        npm install
-        npm run build
+        npm install --prefer-offline 2>/dev/null || true
+        npm run build 2>/dev/null || true
         cd ..
     fi
 
