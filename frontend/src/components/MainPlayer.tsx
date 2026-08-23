@@ -408,14 +408,16 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
       if (el) {
         if (el.requestFullscreen) {
           el.requestFullscreen().catch(() => {
-            // CSS fallback is active with isFullscreen = true
+            if (document.documentElement.requestFullscreen) {
+              document.documentElement.requestFullscreen().catch(() => {});
+            }
           });
         } else if ((el as any).webkitRequestFullscreen) {
           (el as any).webkitRequestFullscreen();
         } else if ((el as any).mozRequestFullScreen) {
           (el as any).mozRequestFullScreen();
-        } else if ((el as any).msRequestFullscreen) {
-          (el as any).msRequestFullscreen();
+        } else if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(() => {});
         }
       }
     }
@@ -919,8 +921,10 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
       {/* 2. Main Live Video Viewport Container */}
       <div
         ref={playerContainerRef}
-        className={`relative w-full flex-1 min-h-0 rounded-xl bg-black border border-[#222222] overflow-hidden flex items-center justify-center group ${
-          isFullscreen ? 'fixed inset-0 z-50 h-screen w-screen rounded-none border-none aspect-auto' : 'aspect-video'
+        className={`relative w-full flex-1 min-h-0 bg-black overflow-hidden flex items-center justify-center group ${
+          isFullscreen
+            ? 'fixed inset-0 z-[99999] h-[100dvh] w-[100dvw] max-h-none max-w-none rounded-none border-none aspect-auto m-0 p-0 top-0 left-0 right-0 bottom-0'
+            : 'rounded-xl border border-[#222222] aspect-video'
         }`}
       >
         {/* EMPTY STATE: WHEN NO CAMERAS ARE CONNECTED */}

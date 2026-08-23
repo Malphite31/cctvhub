@@ -288,7 +288,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Notifications Dropdown Popover */}
           {showNotificationsMenu && (
-            <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-36px)] rounded-xl border border-[#222222] bg-[#121212] shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100 font-sans">
+            <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80 sm:max-w-sm rounded-xl border border-[#222222] bg-[#121212] shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100 font-sans">
               {/* Header */}
               <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[#222222] bg-[#161616]">
                 <div className="flex items-center gap-2">
