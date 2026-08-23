@@ -148,13 +148,6 @@ class AudioWorker:
         # 2. Query sounddevice / PortAudio devices
         if sd is not None:
             try:
-                # Force PortAudio to re-enumerate devices if newly plugged in
-                try:
-                    sd._terminate()
-                    sd._initialize()
-                except Exception:
-                    pass
-
                 all_devs = sd.query_devices()
                 host_apis = {idx: api['name'] for idx, api in enumerate(sd.query_hostapis())}
 
