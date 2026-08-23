@@ -31,6 +31,7 @@ export function useLiveAudio({ sampleRate = 44100 }: UseLiveAudioOptions = {}) {
   // Periodic level polling to ensure VU meter stays live even before user unmutes
   useEffect(() => {
     const pollLevel = async () => {
+      if (document.hidden) return;
       try {
         const res = await fetch('/api/stream/audio/level');
         if (res.ok) {
@@ -42,7 +43,7 @@ export function useLiveAudio({ sampleRate = 44100 }: UseLiveAudioOptions = {}) {
       } catch {}
     };
 
-    const interval = setInterval(pollLevel, 300);
+    const interval = setInterval(pollLevel, 1000);
     return () => clearInterval(interval);
   }, []);
 

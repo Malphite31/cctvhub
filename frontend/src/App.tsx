@@ -110,6 +110,7 @@ export const App: React.FC = () => {
 
   // Real API Fetch Functions
   const fetchTelemetry = async () => {
+    if (document.hidden) return;
     try {
       const res = await fetch('/api/telemetry/system');
       if (res.ok) {
@@ -186,6 +187,7 @@ export const App: React.FC = () => {
   };
 
   const fetchEvents = async () => {
+    if (document.hidden) return;
     try {
       const res = await fetch('/api/events/list');
       if (res.ok) {

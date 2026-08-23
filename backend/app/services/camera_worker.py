@@ -29,6 +29,9 @@ class CameraWorker:
         self.lock = threading.Lock()
         self.worker_thread: Optional[threading.Thread] = None
         self.is_hardware_active = False
+        self.last_client_access = time.time()
+        self._cached_standby_jpeg: Optional[bytes] = None
+        self._last_standby_gen = 0.0
         self.brightness = 50
         self.contrast = 50
         self.saturation = 50
@@ -126,7 +129,7 @@ class CameraWorker:
         is_windows = platform.system() == "Windows"
         target_fps = self.requested_fps or 60
         frame_delay = 1.0 / target_fps
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 85]
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 75]
 
         source_val = str(self.source or self.device).strip()
         is_ip_stream = any(source_val.lower().startswith(proto) for proto in ["rtsp://", "http://", "https://", "rtmp://", "rtsps://"])
@@ -244,7 +247,7 @@ class CameraWorker:
                     # Pass through Vision Tracker for bounding boxes, identity tags & HUD markers
                     annotated_frame, detections = vision_tracker.process_frame(frame, camera_id=str(self.device))
 
-                    # Encode to JPEG
+                    # Encode to JPEG with efficient quality 75
                     _, buf = cv2.imencode('.jpg', annotated_frame, encode_param)
                     with self.lock:
                         self.latest_raw_frame = frame
@@ -254,15 +257,20 @@ class CameraWorker:
                 else:
                     self.is_hardware_active = False
             else:
-                fallback_idx += 1
-                frame = self._generate_standby_frame(f"SEARCHING FEED // DEV {self.device}")
-                annotated_frame, detections = vision_tracker.process_frame(frame, camera_id=str(self.device))
-                _, buf = cv2.imencode('.jpg', annotated_frame, encode_param)
-                with self.lock:
-                    self.latest_raw_frame = frame
-                    self.latest_frame = annotated_frame
-                    self.latest_jpeg = buf.tobytes()
-                    self.latest_detections = detections
+                # Standby / searching state: generate at max 2 FPS to eliminate idle CPU load
+                now_ts = time.time()
+                if (now_ts - self._last_standby_gen >= 0.5) or (self._cached_standby_jpeg is None):
+                    self._last_standby_gen = now_ts
+                    frame = self._generate_standby_frame(f"SEARCHING FEED // DEV {self.device}")
+                    _, buf = cv2.imencode('.jpg', frame, encode_param)
+                    self._cached_standby_jpeg = buf.tobytes()
+                    with self.lock:
+                        self.latest_raw_frame = frame
+                        self.latest_frame = frame
+                        self.latest_jpeg = self._cached_standby_jpeg
+                        self.latest_detections = []
+                time.sleep(0.1)
+                continue
 
             frame_count += 1
             if time.time() - fps_start >= 1.0:
@@ -270,8 +278,12 @@ class CameraWorker:
                 frame_count = 0
                 fps_start = time.time()
 
+            # Adaptive power saving: If no client is watching this feed for > 5s, throttle to 5 FPS
+            is_client_active = (time.time() - self.last_client_access < 6.0)
+            effective_delay = frame_delay if is_client_active else 0.20
+
             elapsed = time.time() - loop_start
-            sleep_time = max(0.001, frame_delay - elapsed)
+            sleep_time = max(0.001, effective_delay - elapsed)
             time.sleep(sleep_time)
 
         if self.cap:
@@ -283,18 +295,22 @@ class CameraWorker:
         self.is_hardware_active = False
 
     def get_latest_jpeg(self) -> Optional[bytes]:
+        self.last_client_access = time.time()
         with self.lock:
             return self.latest_jpeg
 
     def get_latest_frame(self) -> Optional[np.ndarray]:
+        self.last_client_access = time.time()
         with self.lock:
             return self.latest_frame.copy() if self.latest_frame is not None else None
 
     def get_latest_raw_frame(self) -> Optional[np.ndarray]:
+        self.last_client_access = time.time()
         with self.lock:
             return self.latest_raw_frame.copy() if self.latest_raw_frame is not None else None
 
     def get_latest_detections(self) -> List[Dict[str, Any]]:
+        self.last_client_access = time.time()
         with self.lock:
             return list(self.latest_detections)
 

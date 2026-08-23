@@ -100,6 +100,13 @@ class VisionTracker:
         self.cached_custom_trackers_by_cam: Dict[str, List[Dict[str, Any]]] = {}
         self._last_tracker_reload_by_cam: Dict[str, float] = {}
 
+        # Performance optimization caches (Frame-skipping & downscaled inference)
+        self._frame_counts_by_cam: Dict[str, int] = {}
+        self._cached_face_detections_by_cam: Dict[str, List[Dict[str, Any]]] = {}
+        self._cached_rendered_face_data_by_cam: Dict[str, List[Dict[str, Any]]] = {}
+        self._cached_tracker_renders_by_cam: Dict[str, List[Dict[str, Any]]] = {}
+        self._cached_tracker_detections_by_cam: Dict[str, List[Dict[str, Any]]] = {}
+
         # Event logging cooldowns
         self._last_logged_events = {}
 
@@ -195,6 +202,7 @@ class VisionTracker:
     def process_frame(self, frame: np.ndarray, camera_id: str = "0") -> Tuple[np.ndarray, List[Dict[str, Any]]]:
         """
         Processes frame for custom-selected objects/zones and biometric face scanning.
+        Optimized with downscaled Haar inference and frame-skipping for ultra-low CPU utilization.
         """
         if frame is None or not self.enabled:
             return frame, []
@@ -204,163 +212,237 @@ class VisionTracker:
         self._reload_custom_trackers(cam_str)
         self._reload_enrolled_faces()
 
+        frame_idx = self._frame_counts_by_cam.get(cam_str, 0)
+        self._frame_counts_by_cam[cam_str] = frame_idx + 1
+
         annotated_frame = frame.copy()
         active_detections = []
 
-        # 1. Biometric Facial Recognition & Tactical Scanline Visualization
+        # 1. Biometric Facial Recognition & Tactical Scanline Visualization (Every 4th frame, downscaled to 360px)
         if self.detect_faces and self.face_cascade is not None:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.15, minNeighbors=4, minSize=(50, 50))
-            
-            for (fx, fy, fw, fh) in faces:
-                face_roi = frame[fy:fy+fh, fx:fx+fw]
-                matched_name = "Unknown"
-                max_score = 0.0
-                is_matched = False
+            should_run_face = (frame_idx % 4 == 0) or (cam_str not in self._cached_rendered_face_data_by_cam)
 
-                if face_roi.size > 0 and len(self.enrolled_cache) > 0:
-                    try:
-                        roi_hsv = cv2.cvtColor(face_roi, cv2.COLOR_BGR2HSV)
-                        roi_hist = cv2.calcHist([roi_hsv], [0, 1], None, [18, 25], [0, 180, 0, 256])
-                        cv2.normalize(roi_hist, roi_hist, 0, 1, cv2.NORM_MINMAX)
+            if should_run_face:
+                det_w = 360
+                det_h = max(10, int(h * (det_w / float(w))))
+                gray_full = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                small_gray = cv2.resize(gray_full, (det_w, det_h))
 
-                        for enrolled in self.enrolled_cache:
-                            score = cv2.compareHist(enrolled["hist"], roi_hist, cv2.HISTCMP_CORREL)
-                            if score > max_score:
-                                max_score = score
-                                matched_name = enrolled["name"]
-                                if score >= 0.65:
-                                    is_matched = True
-                    except Exception:
-                        pass
+                scale_x = w / float(det_w)
+                scale_y = h / float(det_h)
 
-                conf_pct = int(max(75, min(99, max_score * 100))) if is_matched else 0
+                min_dim = max(20, int(45 * (det_w / float(w))))
+                faces_small = self.face_cascade.detectMultiScale(
+                    small_gray,
+                    scaleFactor=1.2,
+                    minNeighbors=4,
+                    minSize=(min_dim, min_dim)
+                )
 
-                # Render Biometric Face HUD on Video Frame
+                face_renders = []
+                face_dets = []
+
+                for (sfx, sfy, sfw, sfh) in faces_small:
+                    fx = int(sfx * scale_x)
+                    fy = int(sfy * scale_y)
+                    fw = int(sfw * scale_x)
+                    fh = int(sfh * scale_y)
+
+                    face_roi = frame[fy:fy+fh, fx:fx+fw]
+                    matched_name = "Unknown"
+                    max_score = 0.0
+                    is_matched = False
+
+                    if face_roi.size > 0 and len(self.enrolled_cache) > 0:
+                        try:
+                            roi_hsv = cv2.cvtColor(face_roi, cv2.COLOR_BGR2HSV)
+                            roi_hist = cv2.calcHist([roi_hsv], [0, 1], None, [18, 25], [0, 180, 0, 256])
+                            cv2.normalize(roi_hist, roi_hist, 0, 1, cv2.NORM_MINMAX)
+
+                            for enrolled in self.enrolled_cache:
+                                score = cv2.compareHist(enrolled["hist"], roi_hist, cv2.HISTCMP_CORREL)
+                                if score > max_score:
+                                    max_score = score
+                                    matched_name = enrolled["name"]
+                                    if score >= 0.65:
+                                        is_matched = True
+                        except Exception:
+                            pass
+
+                    conf_pct = int(max(75, min(99, max_score * 100))) if is_matched else 0
+
+                    face_renders.append({
+                        "fx": fx, "fy": fy, "fw": fw, "fh": fh,
+                        "name": matched_name if is_matched else "Unenrolled Subject",
+                        "confidence": conf_pct,
+                        "is_matched": is_matched
+                    })
+
+                    face_dets.append({
+                        "id": f"face_{fx}_{fy}",
+                        "name": matched_name if is_matched else "Face Subject",
+                        "action_label": "Biometric Face Recognized" if is_matched else "Face Scan",
+                        "trigger_type": "face",
+                        "state": f"MATCH: {conf_pct}%" if is_matched else "SCANNING",
+                        "is_triggered": is_matched,
+                        "x": int((fx / w) * 100),
+                        "y": int((fy / h) * 100),
+                        "width": int((fw / w) * 100),
+                        "height": int((fh / h) * 100),
+                        "color": "#10B981" if is_matched else "#3B82F6"
+                    })
+
+                self._cached_rendered_face_data_by_cam[cam_str] = face_renders
+                self._cached_face_detections_by_cam[cam_str] = face_dets
+
+            # Render cached face overlays
+            for item in self._cached_rendered_face_data_by_cam.get(cam_str, []):
                 self._render_face_biometric_hud(
                     annotated_frame,
-                    fx, fy, fw, fh,
-                    name=matched_name if is_matched else "Unenrolled Subject",
-                    confidence=conf_pct,
-                    is_matched=is_matched,
+                    item["fx"], item["fy"], item["fw"], item["fh"],
+                    name=item["name"],
+                    confidence=item["confidence"],
+                    is_matched=item["is_matched"],
                     frame_w=w,
                     frame_h=h
                 )
 
-                active_detections.append({
-                    "id": f"face_{fx}_{fy}",
-                    "name": matched_name if is_matched else "Face Subject",
-                    "action_label": "Biometric Face Recognized" if is_matched else "Face Scan",
-                    "trigger_type": "face",
-                    "state": f"MATCH: {conf_pct}%" if is_matched else "SCANNING",
-                    "is_triggered": is_matched,
-                    "x": int((fx / w) * 100),
-                    "y": int((fy / h) * 100),
-                    "width": int((fw / w) * 100),
-                    "height": int((fh / h) * 100),
-                    "color": "#10B981" if is_matched else "#3B82F6"
+            active_detections.extend(self._cached_face_detections_by_cam.get(cam_str, []))
+
+        # 2. Process Custom User-Defined Object Trackers for THIS camera only (Every 3rd frame)
+        camera_trackers = self.cached_custom_trackers_by_cam.get(cam_str, [])
+        should_run_zone = (frame_idx % 3 == 0) or (cam_str not in self._cached_tracker_renders_by_cam)
+
+        if should_run_zone:
+            tracker_renders = []
+            tracker_dets = []
+
+            for tracker in camera_trackers:
+                if not tracker.get("is_active", 1):
+                    continue
+                if str(tracker.get("camera_id", "0")) != cam_str:
+                    continue
+
+                tracker_id = tracker["id"]
+                name = tracker["name"]
+                action_label = tracker["action_label"]
+                trigger_type = tracker.get("trigger_type", "door_open")
+                sensitivity = tracker.get("sensitivity", 60)
+                user_color_hex = tracker.get("color", "#3B82F6")
+
+                rx = tracker["x"]
+                ry = tracker["y"]
+                rw = tracker["width"]
+                rh = tracker["height"]
+
+                if rx <= 100 and rw <= 100:
+                    bx = int((rx / 100.0) * w)
+                    by = int((ry / 100.0) * h)
+                    bw = int((rw / 100.0) * w)
+                    bh = int((rh / 100.0) * h)
+                else:
+                    bx = int(rx)
+                    by = int(ry)
+                    bw = int(rw)
+                    bh = int(rh)
+
+                bx = max(0, min(w - 10, bx))
+                by = max(0, min(h - 10, by))
+                bw = max(10, min(w - bx, bw))
+                bh = max(10, min(h - by, bh))
+
+                roi = frame[by:by+bh, bx:bx+bw]
+                is_triggered, delta_pct = self.zone_analyzer.analyze_roi(tracker_id, roi, sensitivity=sensitivity)
+
+                if is_triggered:
+                    state_str = "OPEN DETECTED" if trigger_type == "door_open" else "TRIGGERED"
+                    color_bgr = (68, 68, 239)
+                    update_tracker_state(tracker_id, state=state_str, last_triggered=int(time.time()))
+                else:
+                    state_str = "CLOSED" if trigger_type == "door_open" else "NORMAL"
+                    color_bgr = hex_to_bgr(user_color_hex)
+                    update_tracker_state(tracker_id, state=state_str)
+
+                tracker_renders.append({
+                    "bx": bx, "by": by, "bw": bw, "bh": bh,
+                    "name": name,
+                    "action_label": action_label,
+                    "state": state_str,
+                    "is_triggered": is_triggered,
+                    "color": color_bgr,
+                    "tracker_id": tracker_id,
+                    "trigger_type": trigger_type,
+                    "delta_pct": delta_pct,
+                    "user_color_hex": user_color_hex
                 })
 
-        # 2. Process Custom User-Defined Object Trackers for THIS camera only
-        camera_trackers = self.cached_custom_trackers_by_cam.get(cam_str, [])
-        for tracker in camera_trackers:
-            if not tracker.get("is_active", 1):
-                continue
-            if str(tracker.get("camera_id", "0")) != cam_str:
-                continue
+                tracker_dets.append({
+                    "id": str(tracker_id),
+                    "name": name,
+                    "action_label": action_label,
+                    "trigger_type": trigger_type,
+                    "state": state_str,
+                    "is_triggered": is_triggered,
+                    "delta": delta_pct,
+                    "x": bx,
+                    "y": by,
+                    "width": bw,
+                    "height": bh,
+                    "color": user_color_hex
+                })
 
-            tracker_id = tracker["id"]
-            name = tracker["name"]
-            action_label = tracker["action_label"]
-            trigger_type = tracker.get("trigger_type", "door_open")
-            sensitivity = tracker.get("sensitivity", 60)
-            user_color_hex = tracker.get("color", "#3B82F6")
+            self._cached_tracker_renders_by_cam[cam_str] = tracker_renders
+            self._cached_tracker_detections_by_cam[cam_str] = tracker_dets
 
-            # Convert percentage/relative coords to pixel bounds
-            rx = tracker["x"]
-            ry = tracker["y"]
-            rw = tracker["width"]
-            rh = tracker["height"]
-
-            if rx <= 100 and rw <= 100:
-                bx = int((rx / 100.0) * w)
-                by = int((ry / 100.0) * h)
-                bw = int((rw / 100.0) * w)
-                bh = int((rh / 100.0) * h)
-            else:
-                bx = int(rx)
-                by = int(ry)
-                bw = int(rw)
-                bh = int(rh)
-
-            bx = max(0, min(w - 10, bx))
-            by = max(0, min(h - 10, by))
-            bw = max(10, min(w - bx, bw))
-            bh = max(10, min(h - by, bh))
-
-            roi = frame[by:by+bh, bx:bx+bw]
-            is_triggered, delta_pct = self.zone_analyzer.analyze_roi(tracker_id, roi, sensitivity=sensitivity)
-
-            if is_triggered:
-                state_str = "OPEN DETECTED" if trigger_type == "door_open" else "TRIGGERED"
-                color_bgr = (68, 68, 239)
-                update_tracker_state(tracker_id, state=state_str, last_triggered=int(time.time()))
-            else:
-                state_str = "CLOSED" if trigger_type == "door_open" else "NORMAL"
-                color_bgr = hex_to_bgr(user_color_hex)
-                update_tracker_state(tracker_id, state=state_str)
-
+        # Render cached custom tracker overlays
+        for t_item in self._cached_tracker_renders_by_cam.get(cam_str, []):
             self._render_custom_tracker_hud(
                 annotated_frame,
-                bx, by, bw, bh,
-                name=name,
-                action_label=action_label,
-                state=state_str,
-                is_triggered=is_triggered,
-                color=color_bgr,
+                t_item["bx"], t_item["by"], t_item["bw"], t_item["bh"],
+                name=t_item["name"],
+                action_label=t_item["action_label"],
+                state=t_item["state"],
+                is_triggered=t_item["is_triggered"],
+                color=t_item["color"],
                 frame_w=w,
                 frame_h=h
             )
-
-            if is_triggered:
+            if t_item["is_triggered"] and should_run_zone:
                 self._maybe_log_custom_event(
-                    tracker_id=tracker_id,
+                    tracker_id=t_item["tracker_id"],
                     camera_id=camera_id,
-                    name=name,
-                    action_label=action_label,
-                    state=state_str,
-                    delta_pct=delta_pct,
+                    name=t_item["name"],
+                    action_label=t_item["action_label"],
+                    state=t_item["state"],
+                    delta_pct=t_item["delta_pct"],
                     annotated_full_frame=annotated_frame
                 )
 
-            active_detections.append({
-                "id": str(tracker_id),
-                "name": name,
-                "action_label": action_label,
-                "trigger_type": trigger_type,
-                "state": state_str,
-                "is_triggered": is_triggered,
-                "delta": delta_pct,
-                "x": bx,
-                "y": by,
-                "width": bw,
-                "height": bh,
-                "color": user_color_hex
-            })
+        active_detections.extend(self._cached_tracker_detections_by_cam.get(cam_str, []))
 
-        # 3. Motion Detection & Automated Triggers
-        is_motion, motion_pct, motion_boxes = motion_detector.process_motion(frame, camera_id=cam_str)
-        if is_motion:
-            cfg = motion_detector.get_camera_settings(cam_str)
-            if cfg.get("highlight_boxes", True):
-                for (mx, my, mw, mh) in motion_boxes:
-                    self._render_motion_box_hud(annotated_frame, mx, my, mw, mh, motion_pct)
-                    active_detections.append({
-                        "id": f"motion_{mx}_{my}",
-                        "name": f"Motion ({motion_pct}%)",
-                        "action_label": f"Trigger: {cfg.get('action', 'both').upper()}",
-                        "trigger_type": "motion",
-                        "state": "ACTIVE",
+        # 3. Motion Detection & Automated Triggers (Every 3rd frame)
+        should_run_motion = (frame_idx % 3 == 0)
+        if should_run_motion:
+            is_motion, motion_pct, motion_boxes = motion_detector.process_motion(frame, camera_id=cam_str)
+            if is_motion:
+                cfg = motion_detector.get_camera_settings(cam_str)
+                if cfg.get("highlight_boxes", True):
+                    for (mx, my, mw, mh) in motion_boxes:
+                        self._render_motion_box_hud(annotated_frame, mx, my, mw, mh, motion_pct)
+                        active_detections.append({
+                            "id": f"motion_{mx}_{my}",
+                            "name": f"Motion ({motion_pct}%)",
+                            "action_label": f"Trigger: {cfg.get('action', 'both').upper()}",
+                            "trigger_type": "motion",
+                            "state": "ACTIVE",
+                            "is_triggered": True,
+                            "delta": motion_pct,
+                            "x": mx,
+                            "y": my,
+                            "width": mw,
+                            "height": mh,
+                            "color": "#EF4444"
+                        })
                         "is_triggered": True,
                         "x": int((mx / w) * 100),
                         "y": int((my / h) * 100),

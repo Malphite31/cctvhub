@@ -276,8 +276,12 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
   };
 
   useEffect(() => {
-    fetchCustomTrackers();
-    const interval = setInterval(fetchCustomTrackers, 1000);
+    const handleFetchTrackers = () => {
+      if (document.hidden) return;
+      fetchCustomTrackers();
+    };
+    handleFetchTrackers();
+    const interval = setInterval(handleFetchTrackers, 2500);
     return () => clearInterval(interval);
   }, [activeDevice]);
 
@@ -301,6 +305,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
   useEffect(() => {
     if (!activeDevice || !isPlaying) return;
     const fetchMotionStatus = async () => {
+      if (document.hidden) return;
       try {
         const res = await fetch(`/api/motion/status?camera_id=${encodeURIComponent(activeDevice)}`);
         if (res.ok) {
@@ -311,7 +316,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
       } catch {}
     };
     fetchMotionStatus();
-    const interval = setInterval(fetchMotionStatus, 1500);
+    const interval = setInterval(fetchMotionStatus, 3000);
     return () => clearInterval(interval);
   }, [activeDevice, isPlaying]);
 
