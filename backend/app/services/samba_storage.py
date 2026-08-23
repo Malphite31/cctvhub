@@ -33,7 +33,10 @@ class SambaStorageService:
         return default
 
     def save_config(self, new_config: Dict[str, Any]) -> Dict[str, Any]:
-        self.config.update(new_config)
+        cfg_copy = dict(new_config)
+        if cfg_copy.get("password") in ["••••••••", "••••"]:
+            cfg_copy["password"] = self.config.get("password", "")
+        self.config.update(cfg_copy)
         try:
             with open(CONFIG_FILE, "w") as f:
                 json.dump(self.config, f, indent=2)
@@ -48,36 +51,48 @@ class SambaStorageService:
         return masked
 
     def test_connection(self, config_to_test: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        cfg = config_to_test or self.config
+        cfg = dict(config_to_test or self.config)
         
-        # Test Case 1: Local mount directory or mapped network path (e.g. /mnt/samba/cctv or \\NAS\share)
-        mount_path = cfg.get("local_mount_path")
-        if mount_path:
+        # Test Case 1: Local mount directory (e.g. /mnt/samba/cctv)
+        mount_path = (cfg.get("local_mount_path") or "").strip()
+        host = (cfg.get("host") or "").strip()
+        share = (cfg.get("share") or "").strip()
+
+        if mount_path and not host:
             p = Path(mount_path)
             if p.exists() and os.access(str(p), os.W_OK):
-                return {"success": True, "message": f"Verified write access to Samba mount '{mount_path}'!"}
+                return {"success": True, "message": f"Verified write access to local mount '{mount_path}'!"}
             elif p.exists():
                 return {"success": False, "error": f"Path '{mount_path}' exists but is not writable."}
             else:
-                return {"success": False, "error": f"Mount path '{mount_path}' does not exist."}
+                return {"success": False, "error": f"Mount path '{mount_path}' does not exist on host."}
 
         # Test Case 2: Direct SMB protocol connection
-        host = cfg.get("host")
-        share = cfg.get("share")
-        user = cfg.get("username")
+        user = (cfg.get("username") or "").strip() or None
         password = cfg.get("password")
+        if password in ["••••••••", "••••"]:
+            password = self.config.get("password")
 
         if not host or not share:
-            return {"success": False, "error": "Provide either a local mount path or Host + Share details."}
+            if mount_path:
+                p = Path(mount_path)
+                if p.exists() and os.access(str(p), os.W_OK):
+                    return {"success": True, "message": f"Verified write access to mount '{mount_path}'!"}
+            return {"success": False, "error": "Please provide Host/IP, Share Name, and Login credentials."}
 
         try:
             import smbclient
+            # Clear previous session cache
+            try:
+                smbclient.reset_connection_cache()
+            except Exception:
+                pass
             smbclient.register_session(host, username=user, password=password)
             unc_path = f"\\\\{host}\\{share}"
             smbclient.listdir(unc_path)
-            return {"success": True, "message": f"Successfully connected to SMB Share '{unc_path}'!"}
+            return {"success": True, "message": f"Successfully authenticated to SMB Share '{unc_path}'!"}
         except Exception as e:
-            return {"success": False, "error": f"SMB connection error: {str(e)}"}
+            return {"success": False, "error": f"SMB Login Error: {str(e)}"}
 
     def sync_file(self, file_path: Path) -> Dict[str, Any]:
         if not self.config.get("enabled"):

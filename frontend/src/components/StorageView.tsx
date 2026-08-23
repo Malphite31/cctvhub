@@ -337,26 +337,19 @@ export const StorageView: React.FC<StorageViewProps> = ({
               <Server className="h-4 w-4 text-[#3B82F6]" />
               <h4 className="font-semibold text-xs text-white">Samba / NAS Sync</h4>
             </div>
-            <input
-              type="checkbox"
-              checked={sambaConfig.enabled}
-              onChange={(e) => setSambaConfig({ ...sambaConfig, enabled: e.target.checked })}
-              className="h-3.5 w-3.5 accent-[#3B82F6] rounded"
-            />
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-zinc-400 font-mono">Enable</span>
+              <input
+                type="checkbox"
+                checked={sambaConfig.enabled}
+                onChange={(e) => setSambaConfig({ ...sambaConfig, enabled: e.target.checked })}
+                className="h-3.5 w-3.5 accent-[#3B82F6] rounded"
+              />
+            </div>
           </div>
 
           <div className="space-y-2.5 text-xs">
-            <div>
-              <label className="block text-[10px] text-zinc-400 mb-0.5">Local Mount or Mapped Share Path</label>
-              <input
-                type="text"
-                value={sambaConfig.local_mount_path}
-                onChange={(e) => setSambaConfig({ ...sambaConfig, local_mount_path: e.target.value })}
-                placeholder="/mnt/samba/cctv or \\NAS\cctv"
-                className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
-              />
-            </div>
-
+            {/* Host IP & Share Name */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className="block text-[10px] text-zinc-400 mb-0.5">Host / Server IP</label>
@@ -378,6 +371,52 @@ export const StorageView: React.FC<StorageViewProps> = ({
                   className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
                 />
               </div>
+            </div>
+
+            {/* Username & Password */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] text-zinc-400 mb-0.5">Username (Optional for Guest)</label>
+                <input
+                  type="text"
+                  value={sambaConfig.username}
+                  onChange={(e) => setSambaConfig({ ...sambaConfig, username: e.target.value })}
+                  placeholder="admin or guest"
+                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-zinc-400 mb-0.5">Password</label>
+                <input
+                  type="password"
+                  value={sambaConfig.password || ''}
+                  onChange={(e) => setSambaConfig({ ...sambaConfig, password: e.target.value })}
+                  placeholder="••••••••••••"
+                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
+                />
+              </div>
+            </div>
+
+            {/* Local Mount Path & Auto Sync */}
+            <div>
+              <label className="block text-[10px] text-zinc-400 mb-0.5">Local Linux / Host Mount Path (Optional)</label>
+              <input
+                type="text"
+                value={sambaConfig.local_mount_path}
+                onChange={(e) => setSambaConfig({ ...sambaConfig, local_mount_path: e.target.value })}
+                placeholder="/mnt/samba/cctv (Leave blank if connecting via IP)"
+                className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-2 rounded-lg bg-[#161616] border border-[#222222]">
+              <span className="text-[11px] text-zinc-300">Auto-sync recordings & snapshots to NAS</span>
+              <input
+                type="checkbox"
+                checked={sambaConfig.auto_sync}
+                onChange={(e) => setSambaConfig({ ...sambaConfig, auto_sync: e.target.checked })}
+                className="h-3.5 w-3.5 accent-[#3B82F6] rounded"
+              />
             </div>
 
             {sambaTestMsg && (
