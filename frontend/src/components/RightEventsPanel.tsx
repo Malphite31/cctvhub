@@ -5,10 +5,10 @@ import {
   Car,
   Video,
   Camera,
-  Filter,
   UserPlus,
   ArrowRight,
-  Plus
+  Plus,
+  ChevronDown
 } from 'lucide-react';
 import { SurveillanceEvent, EnrolledPerson } from '../types';
 
@@ -59,18 +59,18 @@ export const RightEventsPanel: React.FC<RightEventsPanelProps> = ({
           </div>
 
           {/* Filter Dropdown */}
-          <div className="flex items-center gap-1 text-[10px] font-mono text-zinc-400">
-            <Filter className="h-2.5 w-2.5 text-[#3B82F6]" />
+          <div className="relative flex items-center">
             <select
               value={selectedFilter}
               onChange={(e) => setSelectedFilter(e.target.value as any)}
-              className="bg-[#161616] border border-[#222222] rounded px-1.5 py-0.5 text-zinc-200 outline-none cursor-pointer text-[10px]"
+              className="bg-[#161616] hover:bg-[#1c1c1c] border border-[#262626] rounded-lg pl-2 pr-5 py-0.5 text-zinc-200 outline-none cursor-pointer text-[10px] font-mono appearance-none transition-colors"
             >
-              <option value="all">All</option>
+              <option value="all">All Events</option>
               <option value="face">Faces</option>
               <option value="motion">Motion</option>
               <option value="vehicle">Vehicles</option>
             </select>
+            <ChevronDown className="absolute right-1.5 h-2.5 w-2.5 text-zinc-400 pointer-events-none" />
           </div>
         </div>
 

@@ -21,6 +21,7 @@ interface NavbarProps {
   unreadEventsCount: number;
   recentEvents?: SurveillanceEvent[];
   updateInfo?: UpdateCheckInfo | null;
+  currentUser?: { username: string; display_name: string; role: string };
   onOpenUpdateModal?: () => void;
   onToggleMobileMenu: () => void;
   onOpenSettings: () => void;
@@ -35,6 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   unreadEventsCount,
   recentEvents = [],
   updateInfo,
+  currentUser,
   onOpenUpdateModal,
   onToggleMobileMenu,
   onOpenSettings,
@@ -56,7 +58,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [ramHistory, setRamHistory] = useState<number[]>([50, 52, 51, 53, 52, 54, 52, 53]);
   const [diskHistory, setDiskHistory] = useState<number[]>([91.1, 91.5, 91.2, 91.6, 91.3, 91.5, 91.2, 91.4]);
 
-  const username = localStorage.getItem('cctv_username') || sessionStorage.getItem('cctv_username') || 'admin';
+  const displayName = currentUser?.display_name || currentUser?.username || localStorage.getItem('cctv_display_name') || localStorage.getItem('cctv_username') || sessionStorage.getItem('cctv_username') || 'admin';
+  const role = currentUser?.role || localStorage.getItem('cctv_role') || sessionStorage.getItem('cctv_role') || 'viewer';
 
   useEffect(() => {
     const updateTime = () => {
@@ -378,28 +381,41 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#3B82F6]/20 border border-[#3B82F6]/40 text-[#3B82F6]">
               <User className="h-3.5 w-3.5" />
             </div>
-            <span className="text-xs font-medium text-white font-sans hidden sm:inline">{username}</span>
+            <span className="text-xs font-medium text-white font-sans hidden sm:inline">{displayName}</span>
             <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
           </button>
 
           {/* Profile Menu Dropdown */}
           {showProfileMenu && (
-            <div className="absolute right-0 mt-2 w-52 rounded-xl border border-[#222222] bg-[#121212] p-1.5 shadow-2xl z-50 space-y-1">
+            <div className="absolute right-0 mt-2 w-56 rounded-xl border border-[#222222] bg-[#121212] p-1.5 shadow-2xl z-50 space-y-1">
               <div className="px-3 py-2 border-b border-[#222222]">
-                <p className="font-semibold text-white text-xs">{username}</p>
-                <p className="text-[10px] text-zinc-500 font-mono">System Administrator</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold text-white text-xs truncate">{displayName}</p>
+                  <span className={`text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded shrink-0 uppercase ${
+                    role === 'admin'
+                      ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                      : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                  }`}>
+                    {role === 'admin' ? 'Admin' : 'Viewer'}
+                  </span>
+                </div>
+                <p className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                  {role === 'admin' ? 'System Administrator' : 'Family Member (Read-Only)'}
+                </p>
               </div>
 
-              <button
-                onClick={() => {
-                  setShowProfileMenu(false);
-                  onOpenSettings();
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-300 hover:text-white hover:bg-[#1a1a1a] transition-colors text-left text-xs"
-              >
-                <Settings className="h-3.5 w-3.5 text-zinc-400" />
-                <span>NVR Settings</span>
-              </button>
+              {role === 'admin' && (
+                <button
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    onOpenSettings();
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-300 hover:text-white hover:bg-[#1a1a1a] transition-colors text-left text-xs"
+                >
+                  <Settings className="h-3.5 w-3.5 text-zinc-400" />
+                  <span>NVR Settings</span>
+                </button>
+              )}
 
               <button
                 onClick={() => {

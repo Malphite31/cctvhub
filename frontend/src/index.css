@@ -53,3 +53,14 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46;
 }
+
+/* Dark themed dropdown styling */
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #121214;
+  color: #f4f4f5;
+  padding: 8px 12px;
+}

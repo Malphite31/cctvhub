@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Video, Bell, Users } from 'lucide-react';
+import { Video, Bell, Users, ChevronDown } from 'lucide-react';
 import { StorageLocationInfo, CameraDevice } from '../types';
 
 interface BottomWidgetsProps {
@@ -154,15 +154,18 @@ export const BottomWidgets: React.FC<BottomWidgetsProps> = ({
         </div>
 
         <div className="py-1 space-y-1">
-          <select
-            value={perfMode}
-            onChange={(e) => setPerfMode(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-800 rounded p-1 text-zinc-200 text-[10px] outline-none font-mono"
-          >
-            <option>60 FPS Ultra-Low Latency</option>
-            <option>High Definition (1080p60)</option>
-            <option>Low Bandwidth Mode</option>
-          </select>
+          <div className="relative">
+            <select
+              value={perfMode}
+              onChange={(e) => setPerfMode(e.target.value)}
+              className="w-full bg-[#18181b] hover:bg-[#202024] border border-[#2a2a30] rounded pl-2 pr-5 py-1 text-zinc-200 text-[10px] outline-none font-mono appearance-none transition-colors cursor-pointer"
+            >
+              <option>60 FPS Ultra-Low Latency</option>
+              <option>High Definition (1080p60)</option>
+              <option>Low Bandwidth Mode</option>
+            </select>
+            <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 h-2.5 w-2.5 text-zinc-400 pointer-events-none" />
+          </div>
           <span className="text-[8px] text-zinc-500 font-mono block truncate">
             0 dropped frames • {diskTotal} GB host
           </span>

@@ -596,6 +596,7 @@ export const App: React.FC = () => {
           unreadEventsCount={events.length}
           recentEvents={events}
           updateInfo={updateInfo}
+          currentUser={currentUser}
           onOpenUpdateModal={() => setIsUpdateModalOpen(true)}
           onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           onOpenSettings={() => setIsSettingsOpen(true)}

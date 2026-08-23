@@ -7,7 +7,8 @@ import {
   RefreshCw,
   Video,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  ChevronDown
 } from 'lucide-react';
 
 interface CameraEditModalProps {
@@ -365,41 +366,47 @@ export const CameraEditModal: React.FC<CameraEditModalProps> = ({
                   <label className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider block">
                     Target Resolution
                   </label>
-                  <select
-                    value={resolution}
-                    onChange={(e) => {
-                      const selectedVal = e.target.value;
-                      setResolution(selectedVal);
-                      const foundPreset = availableResPresets.find(r => r.value === selectedVal);
-                      if (foundPreset && foundPreset.fps) {
-                        const parsedFps = parseInt(String(foundPreset.fps).replace(/[^0-9]/g, ''), 10);
-                        if (parsedFps) setFps(parsedFps);
-                      }
-                    }}
-                    className="w-full bg-[#161616] border border-[#262626] rounded-lg px-3 py-2 text-white text-xs focus:border-[#3B82F6] focus:outline-none transition-colors"
-                  >
-                    {availableResPresets.map((res) => (
-                      <option key={res.value} value={res.value}>
-                        {res.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={resolution}
+                      onChange={(e) => {
+                        const selectedVal = e.target.value;
+                        setResolution(selectedVal);
+                        const foundPreset = availableResPresets.find(r => r.value === selectedVal);
+                        if (foundPreset && foundPreset.fps) {
+                          const parsedFps = parseInt(String(foundPreset.fps).replace(/[^0-9]/g, ''), 10);
+                          if (parsedFps) setFps(parsedFps);
+                        }
+                      }}
+                      className="w-full bg-[#161616] hover:bg-[#1c1c1c] border border-[#262626] rounded-lg pl-3 pr-8 py-2 text-white text-xs focus:border-[#3B82F6] focus:outline-none appearance-none transition-colors cursor-pointer font-mono"
+                    >
+                      {availableResPresets.map((res) => (
+                        <option key={res.value} value={res.value}>
+                          {res.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400 pointer-events-none" />
+                  </div>
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider block">
                     Frame Rate (FPS)
                   </label>
-                  <select
-                    value={fps}
-                    onChange={(e) => setFps(Number(e.target.value))}
-                    className="w-full bg-[#161616] border border-[#262626] rounded-lg px-3 py-2 text-white text-xs focus:border-[#3B82F6] focus:outline-none transition-colors"
-                  >
-                    <option value={60}>60 FPS (Ultra Smooth)</option>
-                    <option value={30}>30 FPS (Standard NVR)</option>
-                    <option value={24}>24 FPS (Cinematic)</option>
-                    <option value={15}>15 FPS (Bandwidth Saver)</option>
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={fps}
+                      onChange={(e) => setFps(Number(e.target.value))}
+                      className="w-full bg-[#161616] hover:bg-[#1c1c1c] border border-[#262626] rounded-lg pl-3 pr-8 py-2 text-white text-xs focus:border-[#3B82F6] focus:outline-none appearance-none transition-colors cursor-pointer font-mono"
+                    >
+                      <option value={60}>60 FPS (Ultra Smooth)</option>
+                      <option value={30}>30 FPS (Standard NVR)</option>
+                      <option value={24}>24 FPS (Cinematic)</option>
+                      <option value={15}>15 FPS (Bandwidth Saver)</option>
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400 pointer-events-none" />
+                  </div>
                 </div>
               </div>
             );

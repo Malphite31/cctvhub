@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserAccount } from '../types';
 import {
   Users,
@@ -6,7 +6,10 @@ import {
   Plus,
   Trash2,
   RefreshCw,
-  Shield
+  Shield,
+  Eye,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 
 interface UsersViewProps {
@@ -22,7 +25,19 @@ export const UsersView: React.FC<UsersViewProps> = ({ onShowToast }) => {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [role, setRole] = useState<'viewer' | 'admin'>('viewer');
+  const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const roleMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (roleMenuRef.current && !roleMenuRef.current.contains(e.target as Node)) {
+        setShowRoleMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const fetchUsers = async () => {
     setIsLoading(true);
@@ -195,18 +210,79 @@ export const UsersView: React.FC<UsersViewProps> = ({ onShowToast }) => {
               />
             </div>
 
-            <div>
+            <div className="relative" ref={roleMenuRef}>
               <label className="block text-[11px] font-mono text-zinc-400 mb-1">
                 Role & Permissions
               </label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as any)}
-                className="w-full bg-[#18181b] border border-[#2a2a2e] rounded-xl px-3 py-2 text-white text-xs focus:border-[#3B82F6] focus:outline-none font-mono transition-colors"
+              <button
+                type="button"
+                onClick={() => setShowRoleMenu(!showRoleMenu)}
+                className="w-full bg-[#18181b] border border-[#2a2a2e] hover:border-[#3B82F6] rounded-xl px-3 py-2 text-white text-xs font-mono flex items-center justify-between transition-colors text-left"
               >
-                <option value="viewer">Family Viewer (View Streams & Recordings Only)</option>
-                <option value="admin">Administrator (Full Camera & System Control)</option>
-              </select>
+                <div className="flex items-center gap-2 truncate">
+                  {role === 'admin' ? (
+                    <Shield className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                  )}
+                  <span className="truncate">
+                    {role === 'admin' ? 'Administrator' : 'Family Viewer'}
+                  </span>
+                </div>
+                <ChevronDown className="h-3.5 w-3.5 text-zinc-400 shrink-0 ml-1" />
+              </button>
+
+              {showRoleMenu && (
+                <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl border border-[#2a2a2e] bg-[#141418] p-1.5 shadow-2xl z-50 space-y-1 font-mono text-xs animate-in fade-in zoom-in-95 duration-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRole('viewer');
+                      setShowRoleMenu(false);
+                    }}
+                    className={`w-full text-left p-2 rounded-lg flex items-start justify-between transition-colors ${
+                      role === 'viewer'
+                        ? 'bg-[#3B82F6]/20 border border-[#3B82F6]/50 text-white'
+                        : 'text-zinc-300 hover:bg-[#1f1f23]'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <Eye className="h-3.5 w-3.5 text-blue-400 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-semibold text-white text-xs">Family Viewer</div>
+                        <div className="text-[10px] text-zinc-400 font-sans mt-0.5 leading-snug">
+                          Streams & recordings only. No admin settings.
+                        </div>
+                      </div>
+                    </div>
+                    {role === 'viewer' && <Check className="h-3.5 w-3.5 text-[#3B82F6] shrink-0 mt-0.5 ml-1" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRole('admin');
+                      setShowRoleMenu(false);
+                    }}
+                    className={`w-full text-left p-2 rounded-lg flex items-start justify-between transition-colors ${
+                      role === 'admin'
+                        ? 'bg-[#3B82F6]/20 border border-[#3B82F6]/50 text-white'
+                        : 'text-zinc-300 hover:bg-[#1f1f23]'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <Shield className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-semibold text-white text-xs">Administrator</div>
+                        <div className="text-[10px] text-zinc-400 font-sans mt-0.5 leading-snug">
+                          Full camera, user provisioning & system control.
+                        </div>
+                      </div>
+                    </div>
+                    {role === 'admin' && <Check className="h-3.5 w-3.5 text-[#3B82F6] shrink-0 mt-0.5 ml-1" />}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

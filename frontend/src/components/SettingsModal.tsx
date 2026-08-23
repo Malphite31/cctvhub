@@ -26,7 +26,8 @@ import {
   Trash2,
   Plus,
   RefreshCw,
-  CameraOff
+  CameraOff,
+  ChevronDown
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -547,17 +548,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span>Camera Stream Resolution (Dev {activeDevice}):</span>
                         <span className="text-blue-400 font-bold">{camResolution}</span>
                       </div>
-                      <select
-                        value={camResolution}
-                        onChange={(e) => handleSetResolution(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded p-1.5 text-zinc-200 text-xs font-mono outline-none cursor-pointer"
-                      >
-                        {activeCamResolutions.map((res) => (
-                          <option key={res.value} value={res.value}>
-                            {res.label} • {res.fps}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={camResolution}
+                          onChange={(e) => handleSetResolution(e.target.value)}
+                          className="w-full bg-[#18181b] hover:bg-[#202024] border border-[#2a2a30] rounded-lg pl-3 pr-8 py-2 text-zinc-200 text-xs font-mono outline-none cursor-pointer appearance-none transition-colors"
+                        >
+                          {activeCamResolutions.map((res) => (
+                            <option key={res.value} value={res.value}>
+                              {res.label} • {res.fps}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400 pointer-events-none" />
+                      </div>
 
                       <div className="grid grid-cols-2 gap-3 pt-1">
                         <div className="space-y-1">

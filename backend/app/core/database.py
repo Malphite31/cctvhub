@@ -139,6 +139,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS user_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT UNIQUE NOT NULL,
+                token TEXT,
                 username TEXT NOT NULL,
                 display_name TEXT,
                 role TEXT NOT NULL,
@@ -152,6 +153,15 @@ def init_db():
                 status TEXT DEFAULT 'active' -- 'active', 'ended'
             )
         """)
+
+        # Migration: ensure token column exists
+        cursor.execute("PRAGMA table_info(user_sessions)")
+        cols = [c[1] for c in cursor.fetchall()]
+        if "token" not in cols:
+            try:
+                cursor.execute("ALTER TABLE user_sessions ADD COLUMN token TEXT")
+            except Exception:
+                pass
 
         conn.commit()
 
@@ -552,23 +562,25 @@ def create_user_session(
     role: str,
     ip_address: str,
     device_info: str,
-    location: str
+    location: str,
+    token: Optional[str] = None
 ) -> Dict[str, Any]:
     now = int(time.time())
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO user_sessions (
-                session_id, username, display_name, role, ip_address,
+                session_id, token, username, display_name, role, ip_address,
                 device_info, location, login_time, last_heartbeat, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
-        """, (session_id, username, display_name, role, ip_address, device_info, location, now, now))
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+        """, (session_id, token, username, display_name, role, ip_address, device_info, location, now, now))
         conn.commit()
         session_id_row = cursor.lastrowid
 
     return {
         "id": session_id_row,
         "session_id": session_id,
+        "token": token,
         "username": username,
         "display_name": display_name,
         "role": role,
@@ -580,6 +592,17 @@ def create_user_session(
         "status": "active"
     }
 
+def get_session_by_token(token: str) -> Optional[Dict[str, Any]]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM user_sessions
+            WHERE (token = ? OR session_id = ?) AND status = 'active'
+            ORDER BY id DESC LIMIT 1
+        """, (token, token))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
 def update_session_heartbeat(session_id: str) -> bool:
     now = int(time.time())
     with get_db() as conn:
@@ -587,8 +610,8 @@ def update_session_heartbeat(session_id: str) -> bool:
         cursor.execute("""
             UPDATE user_sessions
             SET last_heartbeat = ?, status = 'active'
-            WHERE session_id = ? AND status = 'active'
-        """, (now, session_id))
+            WHERE (session_id = ? OR token = ?) AND status = 'active'
+        """, (now, session_id, session_id))
         conn.commit()
         return cursor.rowcount > 0
 
@@ -599,8 +622,8 @@ def end_user_session(session_id: str, reason: str = "manual_logout") -> bool:
         cursor.execute("""
             UPDATE user_sessions
             SET logout_time = ?, logout_reason = ?, status = 'ended'
-            WHERE session_id = ? AND status = 'active'
-        """, (now, reason, session_id))
+            WHERE (session_id = ? OR token = ?) AND status = 'active'
+        """, (now, reason, session_id, session_id))
         conn.commit()
         return cursor.rowcount > 0
 

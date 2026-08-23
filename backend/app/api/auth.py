@@ -13,6 +13,7 @@ from ..core.database import (
     list_all_users,
     delete_user,
     create_user_session,
+    get_session_by_token,
     update_session_heartbeat,
     end_user_session,
     list_user_sessions,
@@ -127,6 +128,7 @@ def login(req: LoginRequest, request: Request):
     # Record active session in SQLite audit log
     create_user_session(
         session_id=session_id,
+        token=token,
         username=user["username"],
         display_name=user["display_name"],
         role=user["role"],
@@ -173,6 +175,8 @@ def session_heartbeat(authorization: Optional[str] = Header(None)):
         return {"status": "ignored"}
     token = authorization.replace("Bearer ", "").strip()
     session = ACTIVE_SESSIONS.get(token)
+    if not session:
+        session = get_session_by_token(token)
     if session and session.get("session_id"):
         update_session_heartbeat(session["session_id"])
         return {"status": "alive", "session_id": session["session_id"]}
@@ -194,6 +198,11 @@ def session_quit(req: Optional[QuitSessionRequest] = None, authorization: Option
         if not session_id:
             session_id = sess.get("session_id")
 
+    if not session_id and token:
+        db_s = get_session_by_token(token)
+        if db_s:
+            session_id = db_s.get("session_id")
+
     if session_id:
         end_user_session(session_id, reason="tab_closed_or_quit")
         return {"status": "quit_recorded", "session_id": session_id}
@@ -206,6 +215,8 @@ def logout(authorization: Optional[str] = Header(None)):
     if authorization:
         token = authorization.replace("Bearer ", "").strip()
         session = ACTIVE_SESSIONS.pop(token, None)
+        if not session:
+            session = get_session_by_token(token)
         if session and session.get("session_id"):
             end_user_session(session["session_id"], reason="manual_logout")
             log_event(
@@ -218,16 +229,26 @@ def logout(authorization: Optional[str] = Header(None)):
 
 @router.get("/me")
 def get_current_user(authorization: Optional[str] = Header(None)):
-    """Get active session details."""
+    """Get active session details and actual role permissions."""
     if not authorization:
-        admin = get_user_by_username("admin")
-        if admin:
-            admin.pop("password_hash", None)
-            return {"authenticated": True, "user": admin}
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     token = authorization.replace("Bearer ", "").strip()
     session = ACTIVE_SESSIONS.get(token)
+    if not session:
+        # Recover active session from persistent SQLite DB
+        db_session = get_session_by_token(token)
+        if db_session:
+            session = {
+                "session_id": db_session["session_id"],
+                "username": db_session["username"],
+                "display_name": db_session["display_name"],
+                "role": db_session["role"],
+                "created_at": db_session.get("login_time", int(time.time())),
+                "expires_at": int(time.time()) + (86400 * 30)
+            }
+            ACTIVE_SESSIONS[token] = session
+
     if not session:
         if token.startswith("cctv_sec_"):
             admin = get_user_by_username("admin")
