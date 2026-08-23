@@ -1,0 +1,23 @@
+# Cloudflare Tunnel Configuration for CCTV 60 FPS Web Application
+# Replace <TUNNEL_ID> and yourdomain.com with your actual values
+
+tunnel: YOUR_TUNNEL_ID_HERE
+credentials-file: /root/.cloudflared/YOUR_TUNNEL_ID_HERE.json
+
+ingress:
+  # 1. Main CCTV Dashboard Web UI & API
+  - hostname: cctv.yourdomain.com
+    service: http://localhost:18860
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+
+  # 2. Ultra-Low Latency 60 FPS WebRTC / WebSocket MSE Streaming Engine
+  - hostname: cctv-stream.yourdomain.com
+    service: http://localhost:18864
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+
+  # 3. Fallback 404 rule
+  - service: http_status:404

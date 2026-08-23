@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  cctv-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cctv-hub
+    restart: unless-stopped
+    network_mode: host
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/dri:/dev/dri
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/streaming/go2rtc.yaml:/app/streaming/go2rtc.yaml
+    environment:
+      - CAMERA_DEVICE=/dev/video0
+      - GO2RTC_API_URL=http://127.0.0.1:18864
+      - GO2RTC_STREAM_NAME=webcam_60fps

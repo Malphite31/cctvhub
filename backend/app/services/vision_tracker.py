@@ -1,0 +1,542 @@
+import cv2
+import time
+import os
+import math
+from pathlib import Path
+from typing import List, Dict, Any, Tuple, Optional
+import numpy as np
+import logging
+from ..core.config import settings
+from ..core.database import (
+    log_event,
+    list_enrolled_faces,
+    FACES_DIR,
+    list_custom_trackers,
+    update_tracker_state
+)
+
+logger = logging.getLogger("vision_tracker")
+
+def hex_to_bgr(hex_str: str) -> Tuple[int, int, int]:
+    try:
+        hex_clean = hex_str.lstrip('#')
+        if len(hex_clean) == 6:
+            r = int(hex_clean[0:2], 16)
+            g = int(hex_clean[2:4], 16)
+            b = int(hex_clean[4:6], 16)
+            return (b, g, r)
+    except Exception:
+        pass
+    return (246, 130, 59) # default blue
+
+
+class CustomZoneAnalyzer:
+    """Maintains background models and analyzes state changes (e.g. Door Opened, Intrusion) for user-defined zones."""
+    def __init__(self):
+        self.roi_subtractors: Dict[int, cv2.BackgroundSubtractorMOG2] = {}
+        self.last_trigger_times: Dict[int, float] = {}
+
+    def analyze_roi(self, tracker_id: int, roi_crop: np.ndarray, sensitivity: int = 60) -> Tuple[bool, float]:
+        if roi_crop is None or roi_crop.size == 0:
+            return False, 0.0
+
+        if tracker_id not in self.roi_subtractors:
+            self.roi_subtractors[tracker_id] = cv2.createBackgroundSubtractorMOG2(
+                history=120,
+                varThreshold=16,
+                detectShadows=False
+            )
+
+        subtractor = self.roi_subtractors[tracker_id]
+        small_roi = cv2.resize(roi_crop, (120, 120))
+        blurred = cv2.GaussianBlur(small_roi, (5, 5), 0)
+        fg_mask = subtractor.apply(blurred)
+
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
+
+        total_pixels = fg_mask.shape[0] * fg_mask.shape[1]
+        changed_pixels = cv2.countNonZero(fg_mask)
+        delta_pct = round((changed_pixels / float(total_pixels)) * 100.0, 1)
+
+        # Threshold based on sensitivity (20% -> 95%)
+        # High sensitivity = triggers with as low as 3.5% shift; Low = requires 20% shift
+        threshold = max(3.5, 22.0 - (sensitivity * 0.20))
+
+        is_triggered = delta_pct >= threshold
+        return is_triggered, delta_pct
+
+
+class VisionTracker:
+    """
+    Tactical Vision HUD & Biometric Face Tracker with dynamic scanline visualization.
+    """
+    def __init__(self):
+        self.enabled = True
+        self.show_bounding_boxes = True
+        self.show_corner_markers = True
+        self.show_center_reticles = True
+        self.show_metadata_tags = True
+        self.show_motion_vectors = True
+        self.detect_faces = True
+        self.detect_motion = True
+        self.hud_theme = "cyber_blue"
+
+        # Classifiers
+        self.face_cascade = None
+        self.profile_cascade = None
+        self._init_classifiers()
+
+        # Custom Zone Analyzer
+        self.zone_analyzer = CustomZoneAnalyzer()
+
+        # Cache for enrolled face templates
+        self.enrolled_cache = []
+        self._last_face_reload = 0
+        self._reload_enrolled_faces()
+
+        # Cache for custom trackers strictly partitioned by camera_id
+        self.cached_custom_trackers_by_cam: Dict[str, List[Dict[str, Any]]] = {}
+        self._last_tracker_reload_by_cam: Dict[str, float] = {}
+
+        # Event logging cooldowns
+        self._last_logged_events = {}
+
+    def _init_classifiers(self):
+        try:
+            cascade_dir = Path(cv2.data.haarcascades)
+            face_path = cascade_dir / "haarcascade_frontalface_default.xml"
+            if face_path.exists():
+                self.face_cascade = cv2.CascadeClassifier(str(face_path))
+            profile_path = cascade_dir / "haarcascade_profileface.xml"
+            if profile_path.exists():
+                self.profile_cascade = cv2.CascadeClassifier(str(profile_path))
+        except Exception as e:
+            logger.warning(f"Error loading cascade classifiers: {e}")
+
+    def _reload_enrolled_faces(self):
+        now = time.time()
+        if now - self._last_face_reload < 2:
+            return
+        self._last_face_reload = now
+        try:
+            db_faces = list_enrolled_faces()
+            cache = []
+            for face_entry in db_faces:
+                photo_name = face_entry.get("photo_path")
+                if photo_name:
+                    p = FACES_DIR / photo_name
+                    if p.exists():
+                        img = cv2.imread(str(p))
+                        if img is not None:
+                            img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+                            hist = cv2.calcHist([img_hsv], [0, 1], None, [18, 25], [0, 180, 0, 256])
+                            cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
+                            cache.append({
+                                "id": face_entry.get("id"),
+                                "name": face_entry.get("name", "Unknown"),
+                                "hist": hist
+                            })
+            self.enrolled_cache = cache
+        except Exception:
+            pass
+
+    def invalidate_face_cache(self):
+        """Immediately reloads enrolled face database."""
+        self._last_face_reload = 0
+        self._reload_enrolled_faces()
+
+    def invalidate_cache(self, camera_id: Optional[str] = None):
+        """Immediately invalidates custom tracker cache so edits take effect without delay."""
+        if camera_id is not None:
+            cam_str = str(camera_id)
+            self._last_tracker_reload_by_cam.pop(cam_str, None)
+            self.cached_custom_trackers_by_cam.pop(cam_str, None)
+        else:
+            self._last_tracker_reload_by_cam.clear()
+            self.cached_custom_trackers_by_cam.clear()
+
+    def _reload_custom_trackers(self, camera_id: str):
+        cam_str = str(camera_id)
+        now = time.time()
+        if now - self._last_tracker_reload_by_cam.get(cam_str, 0) < 1.0:
+            return
+        self._last_tracker_reload_by_cam[cam_str] = now
+        try:
+            self.cached_custom_trackers_by_cam[cam_str] = list_custom_trackers(camera_id=cam_str)
+        except Exception:
+            pass
+
+    def update_settings(self, settings_dict: Dict[str, Any]):
+        if "enabled" in settings_dict: self.enabled = bool(settings_dict["enabled"])
+        if "show_bounding_boxes" in settings_dict: self.show_bounding_boxes = bool(settings_dict["show_bounding_boxes"])
+        if "show_corner_markers" in settings_dict: self.show_corner_markers = bool(settings_dict["show_corner_markers"])
+        if "show_center_reticles" in settings_dict: self.show_center_reticles = bool(settings_dict["show_center_reticles"])
+        if "show_metadata_tags" in settings_dict: self.show_metadata_tags = bool(settings_dict["show_metadata_tags"])
+        if "show_motion_vectors" in settings_dict: self.show_motion_vectors = bool(settings_dict["show_motion_vectors"])
+        if "detect_faces" in settings_dict: self.detect_faces = bool(settings_dict["detect_faces"])
+        if "detect_motion" in settings_dict: self.detect_motion = bool(settings_dict["detect_motion"])
+        if "hud_theme" in settings_dict: self.hud_theme = str(settings_dict["hud_theme"])
+
+    def get_settings(self) -> Dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "show_bounding_boxes": self.show_bounding_boxes,
+            "show_corner_markers": self.show_corner_markers,
+            "show_center_reticles": self.show_center_reticles,
+            "show_metadata_tags": self.show_metadata_tags,
+            "show_motion_vectors": self.show_motion_vectors,
+            "detect_faces": self.detect_faces,
+            "detect_motion": self.detect_motion,
+            "hud_theme": self.hud_theme,
+        }
+
+    def process_frame(self, frame: np.ndarray, camera_id: str = "0") -> Tuple[np.ndarray, List[Dict[str, Any]]]:
+        """
+        Processes frame for custom-selected objects/zones and biometric face scanning.
+        """
+        if frame is None or not self.enabled:
+            return frame, []
+
+        h, w = frame.shape[:2]
+        cam_str = str(camera_id)
+        self._reload_custom_trackers(cam_str)
+        self._reload_enrolled_faces()
+
+        annotated_frame = frame.copy()
+        active_detections = []
+
+        # 1. Biometric Facial Recognition & Tactical Scanline Visualization
+        if self.detect_faces and self.face_cascade is not None:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.15, minNeighbors=4, minSize=(50, 50))
+            
+            for (fx, fy, fw, fh) in faces:
+                face_roi = frame[fy:fy+fh, fx:fx+fw]
+                matched_name = "Unknown"
+                max_score = 0.0
+                is_matched = False
+
+                if face_roi.size > 0 and len(self.enrolled_cache) > 0:
+                    try:
+                        roi_hsv = cv2.cvtColor(face_roi, cv2.COLOR_BGR2HSV)
+                        roi_hist = cv2.calcHist([roi_hsv], [0, 1], None, [18, 25], [0, 180, 0, 256])
+                        cv2.normalize(roi_hist, roi_hist, 0, 1, cv2.NORM_MINMAX)
+
+                        for enrolled in self.enrolled_cache:
+                            score = cv2.compareHist(enrolled["hist"], roi_hist, cv2.HISTCMP_CORREL)
+                            if score > max_score:
+                                max_score = score
+                                matched_name = enrolled["name"]
+                                if score >= 0.65:
+                                    is_matched = True
+                    except Exception:
+                        pass
+
+                conf_pct = int(max(75, min(99, max_score * 100))) if is_matched else 0
+
+                # Render Biometric Face HUD on Video Frame
+                self._render_face_biometric_hud(
+                    annotated_frame,
+                    fx, fy, fw, fh,
+                    name=matched_name if is_matched else "Unenrolled Subject",
+                    confidence=conf_pct,
+                    is_matched=is_matched,
+                    frame_w=w,
+                    frame_h=h
+                )
+
+                active_detections.append({
+                    "id": f"face_{fx}_{fy}",
+                    "name": matched_name if is_matched else "Face Subject",
+                    "action_label": "Biometric Face Recognized" if is_matched else "Face Scan",
+                    "trigger_type": "face",
+                    "state": f"MATCH: {conf_pct}%" if is_matched else "SCANNING",
+                    "is_triggered": is_matched,
+                    "x": int((fx / w) * 100),
+                    "y": int((fy / h) * 100),
+                    "width": int((fw / w) * 100),
+                    "height": int((fh / h) * 100),
+                    "color": "#10B981" if is_matched else "#3B82F6"
+                })
+
+        # 2. Process Custom User-Defined Object Trackers for THIS camera only
+        camera_trackers = self.cached_custom_trackers_by_cam.get(cam_str, [])
+        for tracker in camera_trackers:
+            if not tracker.get("is_active", 1):
+                continue
+            if str(tracker.get("camera_id", "0")) != cam_str:
+                continue
+
+            tracker_id = tracker["id"]
+            name = tracker["name"]
+            action_label = tracker["action_label"]
+            trigger_type = tracker.get("trigger_type", "door_open")
+            sensitivity = tracker.get("sensitivity", 60)
+            user_color_hex = tracker.get("color", "#3B82F6")
+
+            # Convert percentage/relative coords to pixel bounds
+            rx = tracker["x"]
+            ry = tracker["y"]
+            rw = tracker["width"]
+            rh = tracker["height"]
+
+            if rx <= 100 and rw <= 100:
+                bx = int((rx / 100.0) * w)
+                by = int((ry / 100.0) * h)
+                bw = int((rw / 100.0) * w)
+                bh = int((rh / 100.0) * h)
+            else:
+                bx = int(rx)
+                by = int(ry)
+                bw = int(rw)
+                bh = int(rh)
+
+            bx = max(0, min(w - 10, bx))
+            by = max(0, min(h - 10, by))
+            bw = max(10, min(w - bx, bw))
+            bh = max(10, min(h - by, bh))
+
+            roi = frame[by:by+bh, bx:bx+bw]
+            is_triggered, delta_pct = self.zone_analyzer.analyze_roi(tracker_id, roi, sensitivity=sensitivity)
+
+            if is_triggered:
+                state_str = "OPEN DETECTED" if trigger_type == "door_open" else "TRIGGERED"
+                color_bgr = (68, 68, 239)
+                update_tracker_state(tracker_id, state=state_str, last_triggered=int(time.time()))
+            else:
+                state_str = "CLOSED" if trigger_type == "door_open" else "NORMAL"
+                color_bgr = hex_to_bgr(user_color_hex)
+                update_tracker_state(tracker_id, state=state_str)
+
+            self._render_custom_tracker_hud(
+                annotated_frame,
+                bx, by, bw, bh,
+                name=name,
+                action_label=action_label,
+                state=state_str,
+                is_triggered=is_triggered,
+                color=color_bgr,
+                frame_w=w,
+                frame_h=h
+            )
+
+            if is_triggered:
+                self._maybe_log_custom_event(
+                    tracker_id=tracker_id,
+                    camera_id=camera_id,
+                    name=name,
+                    action_label=action_label,
+                    state=state_str,
+                    delta_pct=delta_pct,
+                    annotated_full_frame=annotated_frame
+                )
+
+            active_detections.append({
+                "id": str(tracker_id),
+                "name": name,
+                "action_label": action_label,
+                "trigger_type": trigger_type,
+                "state": state_str,
+                "is_triggered": is_triggered,
+                "delta": delta_pct,
+                "x": bx,
+                "y": by,
+                "width": bw,
+                "height": bh,
+                "color": user_color_hex
+            })
+
+        return annotated_frame, active_detections
+
+    def _render_face_biometric_hud(
+        self,
+        img: np.ndarray,
+        fx: int, fy: int, fw: int, fh: int,
+        name: str,
+        confidence: int,
+        is_matched: bool,
+        frame_w: int,
+        frame_h: int
+    ):
+        """
+        Renders an ultra-modern biometric HUD with animated vertical laser scanline,
+        corner reticles, facial landmark points, and identification tags.
+        """
+        color = (113, 204, 46) if is_matched else (246, 130, 59) # Emerald vs Cyber Blue
+        
+        # 1. Subtle semi-transparent face mesh background
+        overlay = img.copy()
+        cv2.rectangle(overlay, (fx, fy), (fx + fw, fy + fh), color, -1)
+        cv2.addWeighted(overlay, 0.08, img, 0.92, 0, img)
+
+        # 2. Outer Wireframe Box
+        cv2.rectangle(img, (fx, fy), (fx + fw, fy + fh), color, 1, cv2.LINE_AA)
+
+        # 3. High-Tech Corner Brackets
+        bracket_len = min(22, max(8, int(min(fw, fh) * 0.22)))
+        thick = 2
+        # Top-Left
+        cv2.line(img, (fx, fy), (fx + bracket_len, fy), color, thick, cv2.LINE_AA)
+        cv2.line(img, (fx, fy), (fx, fy + bracket_len), color, thick, cv2.LINE_AA)
+        # Top-Right
+        cv2.line(img, (fx + fw, fy), (fx + fw - bracket_len, fy), color, thick, cv2.LINE_AA)
+        cv2.line(img, (fx + fw, fy), (fx + fw, fy + bracket_len), color, thick, cv2.LINE_AA)
+        # Bottom-Left
+        cv2.line(img, (fx, fy + fh), (fx + bracket_len, fy + fh), color, thick, cv2.LINE_AA)
+        cv2.line(img, (fx, fy + fh), (fx, fy + fh - bracket_len), color, thick, cv2.LINE_AA)
+        # Bottom-Right
+        cv2.line(img, (fx + fw, fy + fh), (fx + fw - bracket_len, fy + fh), color, thick, cv2.LINE_AA)
+        cv2.line(img, (fx + fw, fy + fh), (fx + fw, fy + fh - bracket_len), color, thick, cv2.LINE_AA)
+
+        # 4. Animated Biometric Laser Scanline Sweeping Vertically
+        sweep = (math.sin(time.time() * 4.5) + 1.0) * 0.5
+        scan_y = fy + int(sweep * fh)
+        scan_y = max(fy + 2, min(fy + fh - 2, scan_y))
+        
+        # Scanline beam
+        laser_color = (200, 255, 100) if is_matched else (255, 220, 120)
+        cv2.line(img, (fx + 2, scan_y), (fx + fw - 2, scan_y), laser_color, 2, cv2.LINE_AA)
+
+        # 5. Biometric Facial Landmark Target Points
+        p_left_eye = (int(fx + fw * 0.32), int(fy + fh * 0.38))
+        p_right_eye = (int(fx + fw * 0.68), int(fy + fh * 0.38))
+        p_nose = (int(fx + fw * 0.50), int(fy + fh * 0.58))
+        p_mouth_l = (int(fx + fw * 0.36), int(fy + fh * 0.78))
+        p_mouth_r = (int(fx + fw * 0.64), int(fy + fh * 0.78))
+
+        for pt in [p_left_eye, p_right_eye, p_nose, p_mouth_l, p_mouth_r]:
+            cv2.circle(img, pt, 2, color, -1, cv2.LINE_AA)
+            cv2.circle(img, pt, 5, color, 1, cv2.LINE_AA)
+
+        # Connect landmarks with faint cyber contour lines
+        cv2.line(img, p_left_eye, p_right_eye, color, 1, cv2.LINE_AA)
+        cv2.line(img, p_left_eye, p_nose, color, 1, cv2.LINE_AA)
+        cv2.line(img, p_right_eye, p_nose, color, 1, cv2.LINE_AA)
+        cv2.line(img, p_nose, p_mouth_l, color, 1, cv2.LINE_AA)
+        cv2.line(img, p_nose, p_mouth_r, color, 1, cv2.LINE_AA)
+        cv2.line(img, p_mouth_l, p_mouth_r, color, 1, cv2.LINE_AA)
+
+        # 6. Biometric Header Badge
+        if is_matched:
+            tag_text = f"[BIO-ID: {name.upper()} • {confidence}%]"
+        else:
+            tag_text = "[BIO-SCAN: UNENROLLED SUBJECT]"
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.40
+        (tw, th), _ = cv2.getTextSize(tag_text, font, font_scale, 1)
+
+        badge_y = max(th + 6, fy - 6)
+        pt1 = (fx, badge_y - th - 5)
+        pt2 = (fx + tw + 10, badge_y + 2)
+
+        cv2.rectangle(img, pt1, pt2, (12, 12, 12), -1)
+        cv2.rectangle(img, pt1, pt2, color, 1)
+        text_col = (255, 255, 255) if is_matched else (220, 220, 220)
+        cv2.putText(img, tag_text, (fx + 5, badge_y - 2), font, font_scale, text_col, 1, cv2.LINE_AA)
+
+        # Subtitle below face
+        sub_text = "CONTOUR: LOCKED • BIO-MESH 60FPS" if is_matched else "TRACKING FACIAL MESH"
+        cv2.putText(img, sub_text, (fx, min(frame_h - 4, fy + fh + 12)), font, 0.32, (180, 180, 180), 1, cv2.LINE_AA)
+
+    def _render_custom_tracker_hud(
+        self,
+        img: np.ndarray,
+        x: int, y: int, w: int, h: int,
+        name: str,
+        action_label: str,
+        state: str,
+        is_triggered: bool,
+        color: Tuple[int, int, int],
+        frame_w: int,
+        frame_h: int
+    ):
+        overlay = img.copy()
+        fill_alpha = 0.20 if is_triggered else 0.08
+        cv2.rectangle(overlay, (x, y), (x + w, y + h), color, -1)
+        cv2.addWeighted(overlay, fill_alpha, img, 1.0 - fill_alpha, 0, img)
+
+        thickness = 2 if is_triggered else 1
+        cv2.rectangle(img, (x, y), (x + w, y + h), color, thickness, cv2.LINE_AA)
+
+        if self.show_corner_markers:
+            bracket_len = min(28, max(12, int(min(w, h) * 0.25)))
+            bracket_thick = 3 if is_triggered else 2
+            cv2.line(img, (x, y), (x + bracket_len, y), color, bracket_thick, cv2.LINE_AA)
+            cv2.line(img, (x, y), (x, y + bracket_len), color, bracket_thick, cv2.LINE_AA)
+            cv2.line(img, (x + w, y), (x + w - bracket_len, y), color, bracket_thick, cv2.LINE_AA)
+            cv2.line(img, (x + w, y), (x + w, y + bracket_len), color, bracket_thick, cv2.LINE_AA)
+            cv2.line(img, (x, y + h), (x + bracket_len, y + h), color, bracket_thick, cv2.LINE_AA)
+            cv2.line(img, (x, y + h), (x, y + h - bracket_len), color, bracket_thick, cv2.LINE_AA)
+            cv2.line(img, (x + w, y + h), (x + w - bracket_len, y + h), color, bracket_thick, cv2.LINE_AA)
+            cv2.line(img, (x + w, y + h), (x + w, y + h - bracket_len), color, bracket_thick, cv2.LINE_AA)
+
+        if self.show_center_reticles:
+            cx, cy = x + w // 2, y + h // 2
+            ret_len = 8
+            cv2.circle(img, (cx, cy), 2, color, -1, cv2.LINE_AA)
+            cv2.line(img, (cx - ret_len, cy), (cx + ret_len, cy), color, 1, cv2.LINE_AA)
+            cv2.line(img, (cx, cy - ret_len), (cx, cy + ret_len), color, 1, cv2.LINE_AA)
+
+        if self.show_metadata_tags:
+            tag_text = f"[{name.upper()}] {state}"
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.44
+            (text_w, text_h), _ = cv2.getTextSize(tag_text, font, font_scale, 1)
+
+            badge_y = max(text_h + 8, y - 6)
+            badge_bg_pt1 = (x, badge_y - text_h - 6)
+            badge_bg_pt2 = (x + text_w + 12, badge_y + 2)
+
+            cv2.rectangle(img, badge_bg_pt1, badge_bg_pt2, (15, 15, 15), -1)
+            cv2.rectangle(img, badge_bg_pt1, badge_bg_pt2, color, 1)
+
+            text_color = (255, 255, 255) if not is_triggered else (100, 100, 255)
+            cv2.putText(img, tag_text, (x + 6, badge_y - 3), font, font_scale, text_color, 1, cv2.LINE_AA)
+
+            sub_text = f"ACTION: {action_label}"
+            cv2.putText(img, sub_text, (x, min(frame_h - 6, y + h + 14)), font, 0.35, (180, 180, 180), 1, cv2.LINE_AA)
+
+    def _maybe_log_custom_event(
+        self,
+        tracker_id: int,
+        camera_id: str,
+        name: str,
+        action_label: str,
+        state: str,
+        delta_pct: float,
+        annotated_full_frame: np.ndarray
+    ):
+        key = f"custom_{tracker_id}_{state}"
+        now = time.time()
+        last_time = self._last_logged_events.get(key, 0)
+
+        if now - last_time < 10.0:
+            return
+
+        self._last_logged_events[key] = now
+
+        try:
+            settings.SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+            thumb_name = f"tracker_{int(now)}_{tracker_id}.jpg"
+            thumb_path = settings.SNAPSHOTS_DIR / thumb_name
+
+            cv2.imwrite(str(thumb_path), annotated_full_frame, [cv2.IMWRITE_JPEG_QUALITY, 92])
+            thumb_url = f"/api/recordings/snapshots/{thumb_name}"
+
+            title = f"{action_label}: {name}"
+            details = f"Object tracker '{name}' detected state change ({state}) with delta {delta_pct}%"
+            log_event(
+                event_type="motion",
+                camera_id=camera_id,
+                title=title,
+                details=details,
+                thumbnail_url=thumb_url
+            )
+        except Exception as e:
+            logger.debug(f"Custom tracker event log skip: {e}")
+
+
+# Global Singleton Vision Tracker
+vision_tracker = VisionTracker()

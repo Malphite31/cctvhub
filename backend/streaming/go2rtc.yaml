@@ -1,0 +1,32 @@
+# go2rtc configuration for 60 FPS Video + Audio Streaming
+# Optimized for Proxmox LXC, Low Latency, and Cloudflare Tunnel (WebSocket/WebRTC)
+
+log:
+  level: info
+  api: info
+  webrtc: info
+
+api:
+  listen: ":18864" # API, WebRTC signaling & MSE endpoint
+  origin: "*"
+
+# WebRTC configuration for STUN / remote Cloudflare access
+webrtc:
+  listen: ":18865" # WebRTC UDP / TCP port
+  candidates:
+    - stun:stun.l.google.com:19302
+    - stun:stun1.l.google.com:19302
+
+# Camera + Audio Stream Definitions
+streams:
+  # Stream 1: Direct 60 FPS Hardware V4L2 Capture + ALSA Audio
+  webcam_60fps:
+    - exec:ffmpeg -f v4l2 -input_format mjpeg -video_size 1280x720 -framerate 60 -i /dev/video0 -f alsa -i default -c:v libx264 -preset ultrafast -tune zerolatency -b:v 3000k -maxrate 3500k -bufsize 1000k -pix_fmt yuv420p -c:a aac -b:a 128k -ar 48000 -g 60 -f rtsp {output}#video=h264#audio=aac
+  
+  # Stream 2: High-res 1080p stream + ALSA Audio
+  webcam_1080p:
+    - exec:ffmpeg -f v4l2 -input_format mjpeg -video_size 1920x1080 -framerate 60 -i /dev/video0 -f alsa -i default -c:v libx264 -preset ultrafast -tune zerolatency -b:v 4500k -maxrate 5000k -bufsize 1500k -pix_fmt yuv420p -c:a aac -b:a 128k -ar 48000 -g 60 -f rtsp {output}#video=h264#audio=aac
+
+  # Stream 3: Raw video pass
+  webcam_raw:
+    - v4l2:/dev/video0
