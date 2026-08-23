@@ -65,6 +65,7 @@ interface MainPlayerProps {
   onReconnect: () => void;
   onRefreshDevices?: () => void;
   onShowToast?: (msg: string, isErr?: boolean) => void;
+  userRole?: string;
 }
 
 export const MainPlayer: React.FC<MainPlayerProps> = ({
@@ -88,7 +89,9 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
   onReconnect,
   onRefreshDevices,
   onShowToast,
+  userRole = 'admin',
 }) => {
+  const isViewer = userRole === 'viewer';
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentTime, setCurrentTime] = useState('');
   const [showMicMenu, setShowMicMenu] = useState(false);
@@ -618,21 +621,23 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
           </button>
 
           {/* Select Object / Door to Track button */}
-          <button
-            type="button"
-            onClick={() => setIsDrawingMode(!isDrawingMode)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
-              isDrawingMode
-                ? 'bg-[#3B82F6] text-white border-[#3B82F6] animate-pulse shadow-lg'
-                : isFloating
-                ? 'bg-black/80 hover:bg-black text-zinc-200 border-white/20 backdrop-blur-md shadow-lg'
-                : 'bg-[#18181c] hover:bg-[#222226] text-zinc-300 border-[#2c2c32]'
-            }`}
-            title="Select / Draw Object or Door to Track"
-          >
-            <Plus className="h-3.5 w-3.5 text-[#3B82F6]" />
-            <span className="inline">{isDrawingMode ? 'Cancel' : 'Select'}</span>
-          </button>
+          {!isViewer && (
+            <button
+              type="button"
+              onClick={() => setIsDrawingMode(!isDrawingMode)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
+                isDrawingMode
+                  ? 'bg-[#3B82F6] text-white border-[#3B82F6] animate-pulse shadow-lg'
+                  : isFloating
+                  ? 'bg-black/80 hover:bg-black text-zinc-200 border-white/20 backdrop-blur-md shadow-lg'
+                  : 'bg-[#18181c] hover:bg-[#222226] text-zinc-300 border-[#2c2c32]'
+              }`}
+              title="Select / Draw Object or Door to Track"
+            >
+              <Plus className="h-3.5 w-3.5 text-[#3B82F6]" />
+              <span className="inline">{isDrawingMode ? 'Cancel' : 'Select'}</span>
+            </button>
+          )}
 
           {/* HUD Visibility Toggle */}
           <button
@@ -654,26 +659,28 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
           </button>
 
           {/* Motion Detector Button & Settings */}
-          <button
-            type="button"
-            onClick={() => setIsMotionModalOpen(true)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
-              isMotionDetected
-                ? isFloating
-                  ? 'bg-amber-500/30 text-amber-300 border-amber-500/60 backdrop-blur-md shadow-lg shadow-amber-500/20'
-                  : 'bg-amber-500/20 text-amber-400 border-amber-500/50 hover:bg-amber-500/30'
-                : isFloating
-                ? 'bg-black/80 hover:bg-black text-zinc-200 border-white/20 backdrop-blur-md shadow-lg'
-                : 'bg-[#18181c] hover:bg-[#222226] text-zinc-300 border-[#2c2c32]'
-            }`}
-            title="Motion Detector & Trigger Actions"
-          >
-            <Activity className={`h-3.5 w-3.5 ${isMotionDetected ? 'text-amber-400 animate-pulse' : 'text-zinc-400'}`} />
-            <span className="inline font-mono">Motion</span>
-            {isMotionDetected && (
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
-            )}
-          </button>
+          {!isViewer && (
+            <button
+              type="button"
+              onClick={() => setIsMotionModalOpen(true)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
+                isMotionDetected
+                  ? isFloating
+                    ? 'bg-amber-500/30 text-amber-300 border-amber-500/60 backdrop-blur-md shadow-lg shadow-amber-500/20'
+                    : 'bg-amber-500/20 text-amber-400 border-amber-500/50 hover:bg-amber-500/30'
+                  : isFloating
+                  ? 'bg-black/80 hover:bg-black text-zinc-200 border-white/20 backdrop-blur-md shadow-lg'
+                  : 'bg-[#18181c] hover:bg-[#222226] text-zinc-300 border-[#2c2c32]'
+              }`}
+              title="Motion Detector & Trigger Actions"
+            >
+              <Activity className={`h-3.5 w-3.5 ${isMotionDetected ? 'text-amber-400 animate-pulse' : 'text-zinc-400'}`} />
+              <span className="inline font-mono">Motion</span>
+              {isMotionDetected && (
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
+              )}
+            </button>
+          )}
 
           {/* Mute / Audio with Volume Button */}
           <div className="relative shrink-0">
@@ -838,72 +845,74 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
           )}
 
           {/* Camera Settings & Management Menu */}
-          <div className="relative" ref={moreMenuRef}>
-            <button
-              onClick={() => setShowMoreMenu(!showMoreMenu)}
-              className="p-1.5 rounded-lg border border-[#222222] bg-[#161616] hover:bg-[#1f1f1f] text-zinc-300 hover:text-white transition-colors"
-              title="Camera Settings, Edit & Delete"
-            >
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </button>
+          {!isViewer && (
+            <div className="relative" ref={moreMenuRef}>
+              <button
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+                className="p-1.5 rounded-lg border border-[#222222] bg-[#161616] hover:bg-[#1f1f1f] text-zinc-300 hover:text-white transition-colors"
+                title="Camera Settings, Edit & Delete"
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
 
-            {showMoreMenu && (
-              <div className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-36px)] rounded-xl border border-[#222222] bg-[#161616]/95 backdrop-blur-md p-3.5 shadow-2xl z-50 space-y-3 font-sans text-xs animate-in fade-in zoom-in-95 duration-100">
-                <div className="flex justify-between items-center border-b border-[#222222] pb-2">
-                  <p className="font-semibold text-white">Camera Management</p>
-                  <span className="text-[10px] text-[#3B82F6] font-mono">Dev {currentCam.device}</span>
-                </div>
+              {showMoreMenu && (
+                <div className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-36px)] rounded-xl border border-[#222222] bg-[#161616]/95 backdrop-blur-md p-3.5 shadow-2xl z-50 space-y-3 font-sans text-xs animate-in fade-in zoom-in-95 duration-100">
+                  <div className="flex justify-between items-center border-b border-[#222222] pb-2">
+                    <p className="font-semibold text-white">Camera Management</p>
+                    <span className="text-[10px] text-[#3B82F6] font-mono">Dev {currentCam.device}</span>
+                  </div>
 
-                {/* Edit & Add Actions */}
-                <div className="space-y-1">
-                  {hasCameras && (
+                  {/* Edit & Add Actions */}
+                  <div className="space-y-1">
+                    {hasCameras && (
+                      <button
+                        onClick={handleOpenEditCamera}
+                        className="w-full text-left px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] hover:bg-[#222222] text-white text-xs flex items-center justify-between transition-colors"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Edit3 className="h-3.5 w-3.5 text-[#3B82F6]" />
+                          Edit Camera Details
+                        </span>
+                      </button>
+                    )}
+
                     <button
-                      onClick={handleOpenEditCamera}
+                      onClick={handleOpenAddCamera}
                       className="w-full text-left px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] hover:bg-[#222222] text-white text-xs flex items-center justify-between transition-colors"
                     >
                       <span className="flex items-center gap-2">
-                        <Edit3 className="h-3.5 w-3.5 text-[#3B82F6]" />
-                        Edit Camera Details
+                        <Plus className="h-3.5 w-3.5 text-emerald-400" />
+                        Add New Camera Source
                       </span>
                     </button>
-                  )}
 
-                  <button
-                    onClick={handleOpenAddCamera}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] hover:bg-[#222222] text-white text-xs flex items-center justify-between transition-colors"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Plus className="h-3.5 w-3.5 text-emerald-400" />
-                      Add New Camera Source
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={handleScanHardware}
-                    disabled={isScanning}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] hover:bg-[#222222] text-white text-xs flex items-center justify-between transition-colors disabled:opacity-50"
-                  >
-                    <span className="flex items-center gap-2">
-                      <RefreshCw className={`h-3.5 w-3.5 text-purple-400 ${isScanning ? 'animate-spin' : ''}`} />
-                      {isScanning ? 'Scanning Hardware...' : 'Scan Hardware Devices'}
-                    </span>
-                  </button>
-
-                  {hasCameras && (
                     <button
-                      onClick={() => handleDeleteCamera(currentCam.device)}
-                      className="w-full text-left px-2.5 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-950/80 border border-rose-900/50 text-rose-300 text-xs flex items-center justify-between transition-colors"
+                      onClick={handleScanHardware}
+                      disabled={isScanning}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] hover:bg-[#222222] text-white text-xs flex items-center justify-between transition-colors disabled:opacity-50"
                     >
                       <span className="flex items-center gap-2">
-                        <Trash2 className="h-3.5 w-3.5 text-rose-400" />
-                        Delete This Camera
+                        <RefreshCw className={`h-3.5 w-3.5 text-purple-400 ${isScanning ? 'animate-spin' : ''}`} />
+                        {isScanning ? 'Scanning Hardware...' : 'Scan Hardware Devices'}
                       </span>
                     </button>
-                  )}
+
+                    {hasCameras && (
+                      <button
+                        onClick={() => handleDeleteCamera(currentCam.device)}
+                        className="w-full text-left px-2.5 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-950/80 border border-rose-900/50 text-rose-300 text-xs flex items-center justify-between transition-colors"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                          Delete This Camera
+                        </span>
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

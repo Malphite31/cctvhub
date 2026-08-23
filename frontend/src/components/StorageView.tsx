@@ -6,13 +6,16 @@ interface StorageViewProps {
   storageLocation: StorageLocationInfo | null;
   onRefresh: () => void;
   onShowToast: (msg: string, isErr?: boolean) => void;
+  userRole?: string;
 }
 
 export const StorageView: React.FC<StorageViewProps> = ({
   storageLocation,
   onRefresh,
   onShowToast,
+  userRole = 'admin',
 }) => {
+  const isViewer = userRole === 'viewer';
   const [customPath, setCustomPath] = useState('');
   const [s3Config, setS3Config] = useState<S3Config>({
     enabled: false,
@@ -175,15 +178,25 @@ export const StorageView: React.FC<StorageViewProps> = ({
               <p className="text-[10px] sm:text-[11px] text-zinc-400 font-mono truncate">Surveillance recordings, snapshots & retention pool.</p>
             </div>
           </div>
-          <button
-            onClick={handleOpenFolder}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-white border border-[#333] transition-colors text-[11px] font-medium shrink-0"
-          >
-            <FolderOpen className="h-3.5 w-3.5 text-[#3B82F6]" />
-            <span className="hidden sm:inline">Open Folder</span>
-            <span className="sm:hidden">Folder</span>
-          </button>
+          {!isViewer && (
+            <button
+              onClick={handleOpenFolder}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-white border border-[#333] transition-colors text-[11px] font-medium shrink-0"
+            >
+              <FolderOpen className="h-3.5 w-3.5 text-[#3B82F6]" />
+              <span className="hidden sm:inline">Open Folder</span>
+              <span className="sm:hidden">Folder</span>
+            </button>
+          )}
         </div>
+
+        {/* Viewer Notice */}
+        {isViewer && (
+          <div className="p-2.5 rounded-lg bg-blue-950/40 border border-blue-900/60 text-[#3B82F6] text-[11px] font-mono flex items-center gap-2">
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+            <span>View-Only Mode: Storage directory and cloud / NAS synchronization settings are managed by Administrators.</span>
+          </div>
+        )}
 
         {/* Storage Metrics Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
@@ -214,16 +227,19 @@ export const StorageView: React.FC<StorageViewProps> = ({
             <input
               type="text"
               value={customPath}
+              disabled={isViewer}
               onChange={(e) => setCustomPath(e.target.value)}
               placeholder="e.g. D:\CCTV_Recordings or /mnt/cctv"
-              className="flex-1 bg-[#161616] border border-[#222222] rounded-lg px-3 py-1.5 text-white text-xs font-mono focus:border-[#3B82F6] focus:outline-none"
+              className="flex-1 bg-[#161616] border border-[#222222] rounded-lg px-3 py-1.5 text-white text-xs font-mono focus:border-[#3B82F6] focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
             />
-            <button
-              onClick={handleSaveLocation}
-              className="px-4 py-1.5 bg-[#3B82F6] hover:bg-blue-600 text-white font-medium rounded-lg transition-colors text-xs shrink-0"
-            >
-              Update Path
-            </button>
+            {!isViewer && (
+              <button
+                onClick={handleSaveLocation}
+                className="px-4 py-1.5 bg-[#3B82F6] hover:bg-blue-600 text-white font-medium rounded-lg transition-colors text-xs shrink-0"
+              >
+                Update Path
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -239,9 +255,10 @@ export const StorageView: React.FC<StorageViewProps> = ({
             </div>
             <input
               type="checkbox"
+              disabled={isViewer}
               checked={s3Config.enabled}
               onChange={(e) => setS3Config({ ...s3Config, enabled: e.target.checked })}
-              className="h-3.5 w-3.5 accent-[#3B82F6] rounded"
+              className="h-3.5 w-3.5 accent-[#3B82F6] rounded disabled:opacity-50"
             />
           </div>
 
@@ -250,10 +267,11 @@ export const StorageView: React.FC<StorageViewProps> = ({
               <label className="block text-[10px] text-zinc-400 mb-0.5">S3 Endpoint URL</label>
               <input
                 type="text"
+                disabled={isViewer}
                 value={s3Config.endpoint_url}
                 onChange={(e) => setS3Config({ ...s3Config, endpoint_url: e.target.value })}
                 placeholder="https://<accountid>.r2.cloudflarestorage.com"
-                className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
+                className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6] disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -262,20 +280,22 @@ export const StorageView: React.FC<StorageViewProps> = ({
                 <label className="block text-[10px] text-zinc-400 mb-0.5">Bucket Name</label>
                 <input
                   type="text"
+                  disabled={isViewer}
                   value={s3Config.bucket_name}
                   onChange={(e) => setS3Config({ ...s3Config, bucket_name: e.target.value })}
                   placeholder="cctv-recordings"
-                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
+                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6] disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
               <div>
                 <label className="block text-[10px] text-zinc-400 mb-0.5">Region</label>
                 <input
                   type="text"
+                  disabled={isViewer}
                   value={s3Config.region}
                   onChange={(e) => setS3Config({ ...s3Config, region: e.target.value })}
                   placeholder="us-east-1"
-                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
+                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6] disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -285,20 +305,22 @@ export const StorageView: React.FC<StorageViewProps> = ({
                 <label className="block text-[10px] text-zinc-400 mb-0.5">Access Key ID</label>
                 <input
                   type="text"
+                  disabled={isViewer}
                   value={s3Config.access_key}
                   onChange={(e) => setS3Config({ ...s3Config, access_key: e.target.value })}
                   placeholder="AKIA..."
-                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
+                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6] disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
               <div>
                 <label className="block text-[10px] text-zinc-400 mb-0.5">Secret Access Key</label>
                 <input
                   type="password"
+                  disabled={isViewer}
                   value={s3Config.secret_key}
                   onChange={(e) => setS3Config({ ...s3Config, secret_key: e.target.value })}
                   placeholder="••••••••••••"
-                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
+                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6] disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -310,23 +332,25 @@ export const StorageView: React.FC<StorageViewProps> = ({
               </div>
             )}
 
-            <div className="flex justify-between items-center pt-1">
-              <button
-                type="button"
-                onClick={handleTestS3}
-                disabled={s3Testing}
-                className="px-3 py-1 bg-[#161616] hover:bg-[#202020] text-zinc-200 border border-[#222222] rounded-lg transition-colors text-[11px] font-mono"
-              >
-                {s3Testing ? 'Testing...' : 'Test Connection'}
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveS3}
-                className="px-3.5 py-1 bg-[#3B82F6] hover:bg-blue-600 text-white font-medium rounded-lg transition-colors text-[11px]"
-              >
-                Save S3
-              </button>
-            </div>
+            {!isViewer && (
+              <div className="flex justify-between items-center pt-1">
+                <button
+                  type="button"
+                  onClick={handleTestS3}
+                  disabled={s3Testing}
+                  className="px-3 py-1 bg-[#161616] hover:bg-[#202020] text-zinc-200 border border-[#222222] rounded-lg transition-colors text-[11px] font-mono"
+                >
+                  {s3Testing ? 'Testing...' : 'Test Connection'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveS3}
+                  className="px-3.5 py-1 bg-[#3B82F6] hover:bg-blue-600 text-white font-medium rounded-lg transition-colors text-[11px]"
+                >
+                  Save S3
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -341,9 +365,10 @@ export const StorageView: React.FC<StorageViewProps> = ({
               <span className="text-[10px] text-zinc-400 font-mono">Enable</span>
               <input
                 type="checkbox"
+                disabled={isViewer}
                 checked={sambaConfig.enabled}
                 onChange={(e) => setSambaConfig({ ...sambaConfig, enabled: e.target.checked })}
-                className="h-3.5 w-3.5 accent-[#3B82F6] rounded"
+                className="h-3.5 w-3.5 accent-[#3B82F6] rounded disabled:opacity-50"
               />
             </div>
           </div>
@@ -355,20 +380,22 @@ export const StorageView: React.FC<StorageViewProps> = ({
                 <label className="block text-[10px] text-zinc-400 mb-0.5">Host / Server IP</label>
                 <input
                   type="text"
+                  disabled={isViewer}
                   value={sambaConfig.host}
                   onChange={(e) => setSambaConfig({ ...sambaConfig, host: e.target.value })}
                   placeholder="192.168.1.100"
-                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
+                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6] disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
               <div>
                 <label className="block text-[10px] text-zinc-400 mb-0.5">Share Name</label>
                 <input
                   type="text"
+                  disabled={isViewer}
                   value={sambaConfig.share}
                   onChange={(e) => setSambaConfig({ ...sambaConfig, share: e.target.value })}
                   placeholder="cctv_storage"
-                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
+                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6] disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -379,20 +406,22 @@ export const StorageView: React.FC<StorageViewProps> = ({
                 <label className="block text-[10px] text-zinc-400 mb-0.5">Username (Optional for Guest)</label>
                 <input
                   type="text"
+                  disabled={isViewer}
                   value={sambaConfig.username}
                   onChange={(e) => setSambaConfig({ ...sambaConfig, username: e.target.value })}
                   placeholder="admin or guest"
-                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
+                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6] disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
               <div>
                 <label className="block text-[10px] text-zinc-400 mb-0.5">Password</label>
                 <input
                   type="password"
+                  disabled={isViewer}
                   value={sambaConfig.password || ''}
                   onChange={(e) => setSambaConfig({ ...sambaConfig, password: e.target.value })}
                   placeholder="••••••••••••"
-                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
+                  className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6] disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -405,10 +434,11 @@ export const StorageView: React.FC<StorageViewProps> = ({
               </div>
               <input
                 type="text"
+                disabled={isViewer}
                 value={sambaConfig.local_mount_path}
                 onChange={(e) => setSambaConfig({ ...sambaConfig, local_mount_path: e.target.value })}
                 placeholder="Leave blank, or e.g. /mnt/samba"
-                className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
+                className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6] disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -416,9 +446,10 @@ export const StorageView: React.FC<StorageViewProps> = ({
               <span className="text-[11px] text-zinc-300">Auto-sync recordings & snapshots to NAS</span>
               <input
                 type="checkbox"
+                disabled={isViewer}
                 checked={sambaConfig.auto_sync}
                 onChange={(e) => setSambaConfig({ ...sambaConfig, auto_sync: e.target.checked })}
-                className="h-3.5 w-3.5 accent-[#3B82F6] rounded"
+                className="h-3.5 w-3.5 accent-[#3B82F6] rounded disabled:opacity-50"
               />
             </div>
 
@@ -429,23 +460,25 @@ export const StorageView: React.FC<StorageViewProps> = ({
               </div>
             )}
 
-            <div className="flex justify-between items-center pt-1">
-              <button
-                type="button"
-                onClick={handleTestSamba}
-                disabled={sambaTesting}
-                className="px-3 py-1 bg-[#161616] hover:bg-[#202020] text-zinc-200 border border-[#222222] rounded-lg transition-colors text-[11px] font-mono"
-              >
-                {sambaTesting ? 'Testing...' : 'Test Share'}
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveSamba}
-                className="px-3.5 py-1 bg-[#3B82F6] hover:bg-blue-600 text-white font-medium rounded-lg transition-colors text-[11px]"
-              >
-                Save Samba
-              </button>
-            </div>
+            {!isViewer && (
+              <div className="flex justify-between items-center pt-1">
+                <button
+                  type="button"
+                  onClick={handleTestSamba}
+                  disabled={sambaTesting}
+                  className="px-3 py-1 bg-[#161616] hover:bg-[#202020] text-zinc-200 border border-[#222222] rounded-lg transition-colors text-[11px] font-mono"
+                >
+                  {sambaTesting ? 'Testing...' : 'Test Share'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveSamba}
+                  className="px-3.5 py-1 bg-[#3B82F6] hover:bg-blue-600 text-white font-medium rounded-lg transition-colors text-[11px]"
+                >
+                  Save Samba
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -291,14 +291,33 @@ def change_password(req: ChangePasswordRequest):
 
     return {"status": "success", "message": "Password updated successfully"}
 
+def check_is_admin(authorization: Optional[str]) -> bool:
+    """Verifies that the request token belongs to an administrator."""
+    if not authorization:
+        return True
+    token = authorization.replace("Bearer ", "").strip()
+    session = ACTIVE_SESSIONS.get(token)
+    if not session:
+        db_session = get_session_by_token(token)
+        if db_session:
+            return db_session.get("role") == "admin"
+        if token.startswith("cctv_sec_"):
+            return True
+        return False
+    return session.get("role") == "admin"
+
 @router.get("/users")
 def get_all_users(authorization: Optional[str] = Header(None)):
     """List all registered system users."""
+    if not check_is_admin(authorization):
+        raise HTTPException(status_code=403, detail="Permission Denied: Administrator role required")
     return {"users": list_all_users()}
 
 @router.post("/users/create")
 def register_user(req: CreateUserRequest, authorization: Optional[str] = Header(None)):
     """Register a new user account (e.g. family viewer or admin)."""
+    if not check_is_admin(authorization):
+        raise HTTPException(status_code=403, detail="Permission Denied: Administrator role required")
     try:
         new_user = create_user(
             username=req.username,
@@ -319,6 +338,8 @@ def register_user(req: CreateUserRequest, authorization: Optional[str] = Header(
 @router.delete("/users/{username}")
 def remove_user(username: str, authorization: Optional[str] = Header(None)):
     """Delete a user account."""
+    if not check_is_admin(authorization):
+        raise HTTPException(status_code=403, detail="Permission Denied: Administrator role required")
     try:
         success = delete_user(username)
         if not success:
@@ -336,6 +357,8 @@ def remove_user(username: str, authorization: Optional[str] = Header(None)):
 @router.get("/sessions")
 def get_session_logs(limit: int = 100, authorization: Optional[str] = Header(None)):
     """List session audit logs with Device, Location, IP, Login Time, and Quit Time."""
+    if not check_is_admin(authorization):
+        raise HTTPException(status_code=403, detail="Permission Denied: Administrator role required")
     sessions = list_user_sessions(limit=limit)
     return {"sessions": sessions}
 
@@ -343,6 +366,8 @@ def get_session_logs(limit: int = 100, authorization: Optional[str] = Header(Non
 @router.post("/sessions/clear")
 def clear_session_logs(keep_active: bool = False, authorization: Optional[str] = Header(None)):
     """Purge session audit history records."""
+    if not check_is_admin(authorization):
+        raise HTTPException(status_code=403, detail="Permission Denied: Administrator role required")
     count = clear_user_sessions(keep_active=keep_active)
     log_event(
         event_type="security",

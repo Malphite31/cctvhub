@@ -28,6 +28,7 @@ interface EventsLogViewProps {
   onDeleteEvent?: (id: string | number) => void;
   onClearEvents?: () => void;
   onBatchDeleteEvents?: (ids: (string | number)[]) => void;
+  userRole?: string;
 }
 
 export const EventsLogView: React.FC<EventsLogViewProps> = ({
@@ -38,7 +39,9 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
   onDeleteEvent,
   onClearEvents,
   onBatchDeleteEvents,
+  userRole = 'admin',
 }) => {
+  const isViewer = userRole === 'viewer';
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'face' | 'motion' | 'vehicle' | 'recording' | 'snapshot'>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
@@ -308,7 +311,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
             </button>
 
             {/* Clear All Logs Button */}
-            {onClearEvents && (
+            {!isViewer && onClearEvents && (
               <button
                 onClick={() => setShowClearModal(true)}
                 disabled={events.length === 0}
@@ -379,7 +382,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
         </div>
 
         {/* Batch Selection Banner */}
-        {selectedIds.size > 0 && (
+        {!isViewer && selectedIds.size > 0 && (
           <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-[#1e1b18] border border-amber-500/30 text-xs font-mono animate-in fade-in duration-150">
             <span className="font-semibold text-amber-300">{selectedIds.size} log{selectedIds.size > 1 ? 's' : ''} selected</span>
             <div className="flex items-center gap-1.5">
@@ -408,17 +411,19 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
           {/* Table Header */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#222222] bg-[#161616] text-[10px] font-mono uppercase tracking-wider text-zinc-400 shrink-0">
             <div className="flex items-center gap-3 w-56">
-              <button
-                onClick={handleToggleSelectAll}
-                className="text-zinc-400 hover:text-white transition-colors"
-                title={selectedIds.size === filteredEvents.length ? 'Deselect All' : 'Select All'}
-              >
-                {filteredEvents.length > 0 && selectedIds.size === filteredEvents.length ? (
-                  <CheckSquare className="h-4 w-4 text-[#3B82F6]" />
-                ) : (
-                  <Square className="h-4 w-4 text-zinc-600" />
-                )}
-              </button>
+              {!isViewer && (
+                <button
+                  onClick={handleToggleSelectAll}
+                  className="text-zinc-400 hover:text-white transition-colors"
+                  title={selectedIds.size === filteredEvents.length ? 'Deselect All' : 'Select All'}
+                >
+                  {filteredEvents.length > 0 && selectedIds.size === filteredEvents.length ? (
+                    <CheckSquare className="h-4 w-4 text-[#3B82F6]" />
+                  ) : (
+                    <Square className="h-4 w-4 text-zinc-600" />
+                  )}
+                </button>
+              )}
               <span>Timestamp</span>
             </div>
 
@@ -453,16 +458,18 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
                   >
                     {/* Checkbox & Timestamp */}
                     <div className="w-56 font-mono text-[11px] text-zinc-300 flex items-center gap-3 shrink-0">
-                      <button
-                        onClick={(e) => handleToggleSelectOne(e, ev.id)}
-                        className="text-zinc-500 hover:text-white transition-colors shrink-0"
-                      >
-                        {isSelected ? (
-                          <CheckSquare className="h-4 w-4 text-[#3B82F6]" />
-                        ) : (
-                          <Square className="h-4 w-4 text-zinc-600 group-hover:text-zinc-400" />
-                        )}
-                      </button>
+                      {!isViewer && (
+                        <button
+                          onClick={(e) => handleToggleSelectOne(e, ev.id)}
+                          className="text-zinc-500 hover:text-white transition-colors shrink-0"
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="h-4 w-4 text-[#3B82F6]" />
+                          ) : (
+                            <Square className="h-4 w-4 text-zinc-600 group-hover:text-zinc-400" />
+                          )}
+                        </button>
+                      )}
                       <div className="flex items-center gap-1.5 truncate">
                         <Clock className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
                         <span className="truncate">{formatFullDate(ev.timestamp || ev.time)}</span>
@@ -524,7 +531,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
                         <Download className="h-3.5 w-3.5 text-emerald-400" />
                       </button>
 
-                      {onDeleteEvent && (
+                      {!isViewer && onDeleteEvent && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -570,16 +577,18 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
                   {/* Top Line: Checkbox + Timestamp + Classification + Camera */}
                   <div className="flex items-center justify-between gap-1.5">
                     <div className="flex items-center gap-2 min-w-0">
-                      <button
-                        onClick={(e) => handleToggleSelectOne(e, ev.id)}
-                        className="text-zinc-500 hover:text-white transition-colors shrink-0"
-                      >
-                        {isSelected ? (
-                          <CheckSquare className="h-3.5 w-3.5 text-[#3B82F6]" />
-                        ) : (
-                          <Square className="h-3.5 w-3.5 text-zinc-600" />
-                        )}
-                      </button>
+                      {!isViewer && (
+                        <button
+                          onClick={(e) => handleToggleSelectOne(e, ev.id)}
+                          className="text-zinc-500 hover:text-white transition-colors shrink-0"
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="h-3.5 w-3.5 text-[#3B82F6]" />
+                          ) : (
+                            <Square className="h-3.5 w-3.5 text-zinc-600" />
+                          )}
+                        </button>
+                      )}
                       <span className="font-mono text-[10px] text-zinc-300 flex items-center gap-1 truncate">
                         <Clock className="h-3 w-3 text-zinc-500 shrink-0" />
                         {formatFullDate(ev.timestamp || ev.time)}
@@ -638,7 +647,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
                         <Download className="h-3 w-3 text-emerald-400" />
                       </button>
 
-                      {onDeleteEvent && (
+                      {!isViewer && onDeleteEvent && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

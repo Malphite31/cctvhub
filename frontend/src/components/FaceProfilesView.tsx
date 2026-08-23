@@ -21,6 +21,7 @@ interface FaceProfilesViewProps {
   onOpenEnrollModal: () => void;
   onDeleteFace: (id: string) => void;
   onRefresh: () => void;
+  userRole?: string;
 }
 
 export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
@@ -28,7 +29,9 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
   onOpenEnrollModal,
   onDeleteFace,
   onRefresh,
+  userRole = 'admin',
 }) => {
+  const isViewer = userRole === 'viewer';
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [profileToDelete, setProfileToDelete] = useState<EnrolledPerson | null>(null);
@@ -98,9 +101,11 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
         </div>
 
         <div 
-          onClick={handleToggleEngine}
-          className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#222222] hover:border-zinc-700 flex items-center justify-between shadow-md cursor-pointer transition-colors"
-          title="Click to toggle Facial Recognition Engine ON/OFF"
+          onClick={!isViewer ? handleToggleEngine : undefined}
+          className={`p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#222222] flex items-center justify-between shadow-md transition-colors ${
+            !isViewer ? 'hover:border-zinc-700 cursor-pointer' : 'cursor-default opacity-90'
+          }`}
+          title={!isViewer ? "Click to toggle Facial Recognition Engine ON/OFF" : "Facial Recognition Engine Status"}
         >
           <div className="min-w-0">
             <span className="text-[9px] sm:text-[10px] text-zinc-500 font-mono uppercase tracking-wider block truncate">
@@ -167,20 +172,22 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap">
-          <button
-            type="button"
-            onClick={handleToggleEngine}
-            disabled={isUpdatingEngine}
-            className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-mono font-medium transition-colors ${
-              isDetectFacesActive
-                ? 'bg-emerald-950/70 border-emerald-800/80 text-emerald-300 hover:bg-emerald-900/60'
-                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-850 hover:text-zinc-200'
-            }`}
-            title="Toggle Facial Recognition On/Off"
-          >
-            <ScanFace className="h-3.5 w-3.5" />
-            <span>Engine: {isDetectFacesActive ? 'ON' : 'OFF (ECO)'}</span>
-          </button>
+          {!isViewer && (
+            <button
+              type="button"
+              onClick={handleToggleEngine}
+              disabled={isUpdatingEngine}
+              className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-mono font-medium transition-colors ${
+                isDetectFacesActive
+                  ? 'bg-emerald-950/70 border-emerald-800/80 text-emerald-300 hover:bg-emerald-900/60'
+                  : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-850 hover:text-zinc-200'
+              }`}
+              title="Toggle Facial Recognition On/Off"
+            >
+              <ScanFace className="h-3.5 w-3.5" />
+              <span>Engine: {isDetectFacesActive ? 'ON' : 'OFF (ECO)'}</span>
+            </button>
+          )}
 
           <button
             onClick={onRefresh}
@@ -191,13 +198,15 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
             <span>Refresh</span>
           </button>
 
-          <button
-            onClick={onOpenEnrollModal}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#3B82F6] hover:bg-blue-600 text-white text-xs font-semibold shadow-lg transition-colors"
-          >
-            <UserPlus className="h-3.5 w-3.5" />
-            <span>+ Enroll Face</span>
-          </button>
+          {!isViewer && (
+            <button
+              onClick={onOpenEnrollModal}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#3B82F6] hover:bg-blue-600 text-white text-xs font-semibold shadow-lg transition-colors"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              <span>+ Enroll Face</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -213,16 +222,20 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
                 No Facial Identities Registered
               </h4>
               <p className="text-zinc-500 text-[11px] sm:text-xs font-sans leading-relaxed">
-                Click &quot;+ Enroll Face&quot; to scan from the live optical camera or upload a photo. The system will auto-crop the face and match subjects in real-time.
+                {isViewer
+                  ? 'No biometric face profiles registered in the system.'
+                  : 'Click "+ Enroll Face" to scan from the live optical camera or upload a photo. The system will auto-crop the face and match subjects in real-time.'}
               </p>
             </div>
-            <button
-              onClick={onOpenEnrollModal}
-              className="mt-1 px-4 py-2 rounded-lg bg-[#3B82F6] hover:bg-blue-600 text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg transition-colors"
-            >
-              <UserPlus className="h-4 w-4" />
-              <span>Enroll First Facial Profile</span>
-            </button>
+            {!isViewer && (
+              <button
+                onClick={onOpenEnrollModal}
+                className="mt-1 px-4 py-2 rounded-lg bg-[#3B82F6] hover:bg-blue-600 text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg transition-colors"
+              >
+                <UserPlus className="h-4 w-4" />
+                <span>Enroll First Facial Profile</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3 sm:gap-3.5 auto-rows-max items-start">
@@ -231,17 +244,19 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
                 key={person.id}
                 className="group relative flex flex-col rounded-xl border border-[#222222] bg-[#161616] hover:border-[#3B82F6]/60 transition-all p-2.5 sm:p-3 gap-2 shadow-lg overflow-hidden"
               >
-                {/* Delete button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setProfileToDelete(person);
-                  }}
-                  className="absolute top-3.5 right-3.5 z-20 p-1.5 bg-black/85 hover:bg-rose-600 text-zinc-400 hover:text-white rounded-lg border border-[#333] opacity-0 group-hover:opacity-100 transition-all shadow-xl"
-                  title="Remove Profile"
-                >
-                  <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                </button>
+                {/* Delete button (only for admin) */}
+                {!isViewer && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setProfileToDelete(person);
+                    }}
+                    className="absolute top-3.5 right-3.5 z-20 p-1.5 bg-black/85 hover:bg-rose-600 text-zinc-400 hover:text-white rounded-lg border border-[#333] opacity-0 group-hover:opacity-100 transition-all shadow-xl"
+                    title="Remove Profile"
+                  >
+                    <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                  </button>
+                )}
 
                 {/* Face Image Preview with Biometric Frame */}
                 <div className="relative aspect-square w-full rounded-lg bg-black overflow-hidden border border-[#2a2a2a] group-hover:border-[#3B82F6]/50 transition-colors">

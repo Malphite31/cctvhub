@@ -19,6 +19,7 @@ interface RightEventsPanelProps {
   onViewAllFaces: () => void;
   onOpenEnrollModal: () => void;
   onOpenEvent?: (event: SurveillanceEvent) => void;
+  userRole?: string;
 }
 
 export const RightEventsPanel: React.FC<RightEventsPanelProps> = ({
@@ -28,7 +29,9 @@ export const RightEventsPanel: React.FC<RightEventsPanelProps> = ({
   onViewAllFaces,
   onOpenEnrollModal,
   onOpenEvent,
+  userRole = 'admin',
 }) => {
+  const isViewer = userRole === 'viewer';
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'face' | 'motion' | 'vehicle'>('all');
 
   const filteredEvents = events.filter((ev) => {
@@ -164,13 +167,15 @@ export const RightEventsPanel: React.FC<RightEventsPanelProps> = ({
           </div>
           
           <div className="flex items-center gap-2">
-            <button
-              onClick={onOpenEnrollModal}
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#1a1a1a] hover:bg-[#222] border border-[#2e2e2e] text-[10px] font-mono text-zinc-300 hover:text-white transition-colors"
-            >
-              <Plus className="h-2.5 w-2.5 text-[#3B82F6]" />
-              <span>Enroll</span>
-            </button>
+            {!isViewer && (
+              <button
+                onClick={onOpenEnrollModal}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#1a1a1a] hover:bg-[#222] border border-[#2e2e2e] text-[10px] font-mono text-zinc-300 hover:text-white transition-colors"
+              >
+                <Plus className="h-2.5 w-2.5 text-[#3B82F6]" />
+                <span>Enroll</span>
+              </button>
+            )}
 
             <button
               onClick={onViewAllFaces}
@@ -191,16 +196,18 @@ export const RightEventsPanel: React.FC<RightEventsPanelProps> = ({
               <div>
                 <p className="font-mono text-[11px] text-zinc-300 font-medium">No Enrolled Faces</p>
                 <p className="text-[10px] text-zinc-500 font-mono mt-0.5">
-                  Enroll face identities for optical recognition
+                  {isViewer ? 'No biometric identities registered' : 'Enroll face identities for optical recognition'}
                 </p>
               </div>
-              <button
-                onClick={onOpenEnrollModal}
-                className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3B82F6] text-white text-[11px] font-medium hover:bg-blue-600 shadow-md transition-colors"
-              >
-                <UserPlus className="h-3 w-3" />
-                <span>+ Enroll Subject Face</span>
-              </button>
+              {!isViewer && (
+                <button
+                  onClick={onOpenEnrollModal}
+                  className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3B82F6] text-white text-[11px] font-medium hover:bg-blue-600 shadow-md transition-colors"
+                >
+                  <UserPlus className="h-3 w-3" />
+                  <span>+ Enroll Subject Face</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-3 gap-2">

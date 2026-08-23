@@ -270,6 +270,12 @@ export const App: React.FC = () => {
     };
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (currentUser.role === 'viewer' && (activeTab === 'users' || activeTab === 'sessions')) {
+      setActiveTab('live');
+    }
+  }, [currentUser.role, activeTab]);
+
   // Initial Pollers
   useEffect(() => {
     fetchTelemetry();
@@ -642,6 +648,7 @@ export const App: React.FC = () => {
                     onReconnect={reconnect}
                     onRefreshDevices={fetchDevices}
                     onShowToast={showToast}
+                    userRole={currentUser.role}
                   />
                 </div>
 
@@ -654,6 +661,7 @@ export const App: React.FC = () => {
                     onViewAllFaces={() => setActiveTab('faces')}
                     onOpenEnrollModal={() => setIsEnrollModalOpen(true)}
                     onOpenEvent={handleOpenEvent}
+                    userRole={currentUser.role}
                   />
                 </div>
               </div>
@@ -667,6 +675,7 @@ export const App: React.FC = () => {
                   onOpenSettings={() => setIsSettingsOpen(true)}
                   onRefreshDevices={fetchDevices}
                   onShowToast={showToast}
+                  userRole={currentUser.role}
                 />
               </div>
 
@@ -679,6 +688,7 @@ export const App: React.FC = () => {
                   onViewAllFaces={() => setActiveTab('faces')}
                   onOpenEnrollModal={() => setIsEnrollModalOpen(true)}
                   onOpenEvent={handleOpenEvent}
+                  userRole={currentUser.role}
                 />
               </div>
             </div>
@@ -713,6 +723,7 @@ export const App: React.FC = () => {
                 onDeleteEvent={handleDeleteEvent}
                 onClearEvents={handleClearEvents}
                 onBatchDeleteEvents={handleBatchDeleteEvents}
+                userRole={currentUser.role}
               />
             </div>
           )}
@@ -725,6 +736,7 @@ export const App: React.FC = () => {
                 onOpenEnrollModal={() => setIsEnrollModalOpen(true)}
                 onDeleteFace={handleDeleteFace}
                 onRefresh={fetchFaces}
+                userRole={currentUser.role}
               />
             </div>
           )}
@@ -736,6 +748,7 @@ export const App: React.FC = () => {
                 storageLocation={storageLocation}
                 onRefresh={fetchStorageLocation}
                 onShowToast={showToast}
+                userRole={currentUser.role}
               />
             </div>
           )}
@@ -755,14 +768,14 @@ export const App: React.FC = () => {
           )}
 
           {/* VIEW 7: USERS & FAMILY ACCESS */}
-          {activeTab === 'users' && (
+          {activeTab === 'users' && currentUser.role !== 'viewer' && (
             <div className="flex-1 min-h-0 flex flex-col">
               <UsersView onShowToast={showToast} />
             </div>
           )}
 
           {/* VIEW 8: DEVICE & SESSION AUDIT LOGS */}
-          {activeTab === 'sessions' && (
+          {activeTab === 'sessions' && currentUser.role !== 'viewer' && (
             <div className="flex-1 min-h-0 flex flex-col">
               <SessionLogsView onShowToast={showToast} />
             </div>

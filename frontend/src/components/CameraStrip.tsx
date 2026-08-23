@@ -14,9 +14,10 @@ interface CameraStripProps {
   devices: CameraDevice[];
   activeDevice: string;
   onSelectDevice: (dev: string) => void;
-  onOpenSettings: () => void;
+  onOpenSettings?: () => void;
   onRefreshDevices?: () => void;
   onShowToast?: (msg: string, isErr?: boolean) => void;
+  userRole?: string;
 }
 
 export const CameraStrip: React.FC<CameraStripProps> = ({
@@ -26,7 +27,9 @@ export const CameraStrip: React.FC<CameraStripProps> = ({
   onOpenSettings,
   onRefreshDevices,
   onShowToast,
+  userRole = 'admin',
 }) => {
+  const isViewer = userRole === 'viewer';
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingCam, setEditingCam] = useState<CameraDevice | null>(null);
   const [camToDelete, setCamToDelete] = useState<CameraDevice | null>(null);
@@ -104,7 +107,7 @@ export const CameraStrip: React.FC<CameraStripProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {devices.length > 0 && (
+          {devices.length > 0 && !isViewer && (
             <button
               onClick={handleOpenAdd}
               className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#1a1a1a] hover:bg-[#222] border border-[#2e2e2e] text-[9px] font-mono text-zinc-300 hover:text-white transition-colors"
@@ -141,18 +144,24 @@ export const CameraStrip: React.FC<CameraStripProps> = ({
           className="flex items-stretch gap-2 overflow-x-auto no-scrollbar w-full py-0.5"
         >
           {devices.length === 0 ? (
-            <button
-              type="button"
-              onClick={handleOpenAdd}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg border border-dashed border-[#28282c] hover:border-[#3B82F6]/60 bg-[#141416]/60 hover:bg-[#18181c] text-zinc-400 hover:text-white transition-all group/empty cursor-pointer"
-            >
-              <div className="p-1 rounded-md bg-[#1e1e24] group-hover/empty:bg-[#3B82F6] text-zinc-400 group-hover/empty:text-white transition-colors">
-                <Plus className="h-3.5 w-3.5" />
+            isViewer ? (
+              <div className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg border border-[#222222] bg-[#141416] text-zinc-500 font-mono text-xs">
+                No active camera streams available
               </div>
-              <span className="font-mono text-xs text-zinc-300 group-hover/empty:text-white">
-                No cameras connected — Click to add your first camera feed
-              </span>
-            </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleOpenAdd}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg border border-dashed border-[#28282c] hover:border-[#3B82F6]/60 bg-[#141416]/60 hover:bg-[#18181c] text-zinc-400 hover:text-white transition-all group/empty cursor-pointer"
+              >
+                <div className="p-1 rounded-md bg-[#1e1e24] group-hover/empty:bg-[#3B82F6] text-zinc-400 group-hover/empty:text-white transition-colors">
+                  <Plus className="h-3.5 w-3.5" />
+                </div>
+                <span className="font-mono text-xs text-zinc-300 group-hover/empty:text-white">
+                  No cameras connected — Click to add your first camera feed
+                </span>
+              </button>
+            )
           ) : (
             <>
               {devices.map((cam, idx) => {
@@ -181,22 +190,24 @@ export const CameraStrip: React.FC<CameraStripProps> = ({
                       </span>
 
                       {/* Quick Hover Action Overlay on Thumbnail */}
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 z-10">
-                        <button
-                          onClick={(e) => handleOpenEdit(e, cam)}
-                          className="p-1 rounded-full bg-black/80 hover:bg-[#3B82F6] text-white border border-white/20 transition-colors shadow-lg"
-                          title="Edit Camera Details"
-                        >
-                          <Edit3 className="h-3 w-3" />
-                        </button>
-                        <button
-                          onClick={(e) => handleDeleteCamera(e, cam)}
-                          className="p-1 rounded-full bg-black/80 hover:bg-rose-600 text-white border border-white/20 transition-colors shadow-lg"
-                          title="Delete Camera"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
+                      {!isViewer && (
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 z-10">
+                          <button
+                            onClick={(e) => handleOpenEdit(e, cam)}
+                            className="p-1 rounded-full bg-black/80 hover:bg-[#3B82F6] text-white border border-white/20 transition-colors shadow-lg"
+                            title="Edit Camera Details"
+                          >
+                            <Edit3 className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteCamera(e, cam)}
+                            className="p-1 rounded-full bg-black/80 hover:bg-rose-600 text-white border border-white/20 transition-colors shadow-lg"
+                            title="Delete Camera"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Label & Details Info Section */}
@@ -218,16 +229,18 @@ export const CameraStrip: React.FC<CameraStripProps> = ({
                 );
               })}
 
-              {/* Add Camera Card (only shown when cameras exist) */}
-              <div
-                onClick={handleOpenAdd}
-                className="w-24 sm:w-28 shrink-0 rounded-lg border border-dashed border-[#333333] hover:border-[#3B82F6] bg-[#161616] hover:bg-[#1c1c1c] p-2 flex flex-col items-center justify-center gap-1 cursor-pointer text-zinc-400 hover:text-white transition-all min-h-[68px]"
-              >
-                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#202020] border border-[#2a2a2a]">
-                  <Plus className="h-3 w-3 text-[#3B82F6]" />
+              {/* Add Camera Card (only shown for admins when cameras exist) */}
+              {!isViewer && (
+                <div
+                  onClick={handleOpenAdd}
+                  className="w-24 sm:w-28 shrink-0 rounded-lg border border-dashed border-[#333333] hover:border-[#3B82F6] bg-[#161616] hover:bg-[#1c1c1c] p-2 flex flex-col items-center justify-center gap-1 cursor-pointer text-zinc-400 hover:text-white transition-all min-h-[68px]"
+                >
+                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#202020] border border-[#2a2a2a]">
+                    <Plus className="h-3 w-3 text-[#3B82F6]" />
+                  </div>
+                  <span className="text-[9px] font-medium font-sans">Add Camera</span>
                 </div>
-                <span className="text-[9px] font-medium font-sans">Add Camera</span>
-              </div>
+              )}
             </>
           )}
         </div>
