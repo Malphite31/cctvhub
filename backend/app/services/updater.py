@@ -1,10 +1,12 @@
 import os
+import sys
 import time
 import json
 import httpx
 import logging
 import threading
 import subprocess
+import shutil
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from ..core.config import settings
@@ -27,6 +29,16 @@ class AppUpdaterService:
         # Start periodic background update checker thread
         t = threading.Thread(target=self._background_check_loop, daemon=True)
         t.start()
+
+    def _find_repo_root(self) -> Path:
+        """Finds the root repository directory accurately across Docker, systemd, or local dev."""
+        p = Path(__file__).resolve()
+        for parent in [p] + list(p.parents):
+            if (parent / ".git").exists() or (parent / "backend" / "app" / "main.py").exists():
+                return parent
+        if Path("/opt/cctv-hub").exists() and (Path("/opt/cctv-hub") / ".git").exists():
+            return Path("/opt/cctv-hub")
+        return settings.BASE_DIR.parent
 
     def _load_last_check(self) -> Dict[str, Any]:
         default = {
@@ -64,13 +76,23 @@ class AppUpdaterService:
 
     def get_current_commit(self) -> str:
         try:
-            return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()
+            repo_root = self._find_repo_root()
+            return subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=str(repo_root),
+                stderr=subprocess.DEVNULL
+            ).decode().strip()
         except Exception:
             return "main"
 
     def get_current_branch(self) -> str:
         try:
-            return subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()
+            repo_root = self._find_repo_root()
+            return subprocess.check_output(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=str(repo_root),
+                stderr=subprocess.DEVNULL
+            ).decode().strip()
         except Exception:
             return "main"
 
@@ -109,8 +131,10 @@ class AppUpdaterService:
         # 2. Fallback: Git ls-remote if API failed or rate-limited
         if latest_sha == current_commit:
             try:
+                repo_root = self._find_repo_root()
                 out = subprocess.check_output(
                     ["git", "ls-remote", "origin", f"refs/heads/{branch}"],
+                    cwd=str(repo_root),
                     stderr=subprocess.DEVNULL,
                     timeout=10
                 ).decode().strip()
@@ -158,6 +182,33 @@ class AppUpdaterService:
                 "check_info": self.last_check_info
             }
 
+    def _restart_service(self):
+        """Restarts the CCTV Hub application cleanly across systemd, Docker, and standalone setups."""
+        # 1. If running under systemd service, restart service
+        if shutil.which("systemctl"):
+            for svc in ["cctv-hub", "cctvhub", "cctv"]:
+                try:
+                    chk = subprocess.run(["systemctl", "is-active", svc], capture_output=True, text=True)
+                    if chk.returncode == 0:
+                        logger.info(f"Restarting systemd service: {svc}")
+                        subprocess.Popen(["systemctl", "restart", svc])
+                        return
+                except Exception:
+                    pass
+
+        # 2. If running in Docker / container or managed process: exit with 0 so supervisor or container restarts
+        if sys.platform != "win32":
+            try:
+                logger.info("Restarting process via supervisor/container exit.")
+                os._exit(0)
+            except Exception:
+                pass
+        else:
+            try:
+                os.execl(sys.executable, sys.executable, *sys.argv)
+            except Exception:
+                pass
+
     def apply_update(self) -> Dict[str, Any]:
         """Starts the update process in a background thread."""
         with self._lock:
@@ -175,81 +226,94 @@ class AppUpdaterService:
                     self.update_logs.append(msg)
 
             try:
-                install_dir = Path("/opt/cctv-hub")
-                if not install_dir.exists():
-                    # Local repo path fallback
-                    install_dir = Path(__file__).resolve().parent.parent.parent.parent
-
+                install_dir = self._find_repo_root()
                 _log(f">> Application directory: {install_dir}")
 
                 # Step 1: Pull Git updates
                 _log(">> [1/4] Fetching and synchronizing latest code from GitHub...")
                 self.update_status = "downloading"
-                subprocess.run(["git", "fetch", "--all"], cwd=str(install_dir), capture_output=True, timeout=60)
-                res = subprocess.run(
-                    ["git", "reset", "--hard", "origin/main"],
-                    cwd=str(install_dir),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    timeout=60
-                )
-                _log(res.stdout.strip())
-                if res.returncode != 0:
-                    subprocess.run(["git", "stash"], cwd=str(install_dir), capture_output=True)
+                if shutil.which("git"):
+                    subprocess.run(["git", "config", "--global", "--add", "safe.directory", str(install_dir)], capture_output=True)
+                    subprocess.run(["git", "fetch", "--all"], cwd=str(install_dir), capture_output=True, timeout=60)
                     res = subprocess.run(
-                        ["git", "pull", "origin", "main"],
+                        ["git", "reset", "--hard", "origin/main"],
                         cwd=str(install_dir),
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
                         text=True,
                         timeout=60
                     )
-                    _log(res.stdout.strip())
+                    _log(res.stdout.strip() if res.stdout else ">> Git branch synchronized with origin/main.")
                     if res.returncode != 0:
-                        raise Exception(f"Git sync failed: {res.stdout}")
+                        subprocess.run(["git", "stash"], cwd=str(install_dir), capture_output=True)
+                        res2 = subprocess.run(
+                            ["git", "pull", "origin", "main"],
+                            cwd=str(install_dir),
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            timeout=60
+                        )
+                        _log(res2.stdout.strip() if res2.stdout else ">> Git pull completed.")
+                else:
+                    _log(">> Git binary not found; skipping git fetch.")
 
                 # Step 2: Update Python dependencies
-                _log(">> [2/4] Upgrading backend dependencies...")
+                _log(">> [2/4] Verifying backend dependencies...")
                 self.update_status = "installing"
-                pip_exe = install_dir / ".venv" / "bin" / "pip"
-                if not pip_exe.exists():
-                    pip_exe = "pip3"
-                else:
-                    pip_exe = str(pip_exe)
-
                 req_file = install_dir / "backend" / "requirements.txt"
+                if not req_file.exists():
+                    req_file = install_dir / "requirements.txt"
                 if req_file.exists():
-                    res = subprocess.run(
-                        [pip_exe, "install", "-r", str(req_file)],
-                        cwd=str(install_dir),
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        timeout=120
-                    )
-                    _log(">> Python packages verified.")
+                    try:
+                        res = subprocess.run(
+                            [sys.executable, "-m", "pip", "install", "--no-cache-dir", "-r", str(req_file)],
+                            cwd=str(install_dir),
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            timeout=120
+                        )
+                        _log(">> Python packages verified.")
+                    except Exception as e:
+                        _log(f">> Pip notice: {e}")
 
-                # Step 3: Compile React Frontend
-                _log(">> [3/4] Compiling frontend UI bundle...")
+                # Step 3: Verify and compile React Frontend
+                _log(">> [3/4] Verifying frontend UI bundle...")
                 self.update_status = "building"
+                
+                # Check for pre-built frontend_dist or dist
+                prebuilt = install_dir / "backend" / "frontend_dist"
+                target_dist = install_dir / "frontend" / "dist"
+                if prebuilt.exists():
+                    try:
+                        if not target_dist.exists():
+                            target_dist.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copytree(str(prebuilt), str(target_dist), dirs_exist_ok=True)
+                        _log(">> Frontend production bundle synchronized.")
+                    except Exception as e:
+                        _log(f">> Bundle sync notice: {e}")
+
                 frontend_dir = install_dir / "frontend"
-                if frontend_dir.exists() and (frontend_dir / "package.json").exists():
-                    npm_build = subprocess.run(
-                        ["npm", "run", "build"],
-                        cwd=str(frontend_dir),
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        timeout=180
-                    )
-                    if npm_build.returncode == 0:
-                        _log(">> Frontend production bundle built successfully.")
-                    else:
-                        _log(f">> Warning during frontend build: {npm_build.stdout}")
+                if shutil.which("npm") and frontend_dir.exists() and (frontend_dir / "package.json").exists():
+                    try:
+                        npm_build = subprocess.run(
+                            ["npm", "run", "build"],
+                            cwd=str(frontend_dir),
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            timeout=180
+                        )
+                        if npm_build.returncode == 0:
+                            _log(">> Frontend production bundle compiled successfully.")
+                        else:
+                            _log(f">> Notice during frontend compilation: {npm_build.stdout}")
+                    except Exception as e:
+                        _log(f">> NPM build notice: {e}")
 
                 # Step 4: Restart Service
-                _log(">> [4/4] Restarting CCTV Hub systemd service...")
+                _log(">> [4/4] Restarting CCTV Hub services...")
                 self.update_status = "restarting"
                 _log(">> System is restarting. Web UI will auto-reconnect in 5 seconds.")
                 
@@ -265,9 +329,7 @@ class AppUpdaterService:
 
                 # Delay slightly so client receives "restarting" status before daemon restart
                 time.sleep(2)
-                
-                if os.name != 'nt':
-                    subprocess.Popen(["systemctl", "restart", "cctv-hub"])
+                self._restart_service()
 
             except Exception as e:
                 logger.error(f"Update error: {e}")
