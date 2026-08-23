@@ -1,6 +1,10 @@
 import os
 import time
+import socket
+import platform
 import psutil
+from pathlib import Path
+from typing import Dict, Any, List, Optional
 from fastapi import APIRouter
 from ..services.camera_worker import camera_manager
 
@@ -9,11 +13,128 @@ router = APIRouter()
 _last_net_time = time.time()
 _last_net_io = psutil.net_io_counters()
 
+def get_hardware_diagnostics() -> Dict[str, Any]:
+    """Inspects battery status, hardware thermal sensors, and system device identity."""
+    # 1. Battery Telemetry
+    battery_info = {
+        "has_battery": False,
+        "percent": None,
+        "power_plugged": True,
+        "status": "AC Mains / Wall Power (No Battery)",
+        "time_left_formatted": None
+    }
+    try:
+        if hasattr(psutil, "sensors_battery"):
+            b = psutil.sensors_battery()
+            if b is not None:
+                is_plugged = bool(b.power_plugged) if b.power_plugged is not None else True
+                secs = b.secsleft if (b.secsleft is not None and b.secsleft > 0) else None
+                time_left_str = None
+                if secs and secs != psutil.POWER_TIME_UNLIMITED:
+                    hrs = secs // 3600
+                    mins = (secs % 3600) // 60
+                    time_left_str = f"{hrs}h {mins}m remaining"
+
+                if is_plugged:
+                    status_text = "AC Power (100% Charged)" if b.percent >= 99 else "AC Connected (Charging)"
+                else:
+                    status_text = f"Discharging ({b.percent}%)"
+
+                battery_info = {
+                    "has_battery": True,
+                    "percent": round(b.percent, 1),
+                    "power_plugged": is_plugged,
+                    "status": status_text,
+                    "time_left_formatted": time_left_str
+                }
+    except Exception:
+        pass
+
+    # 2. Hardware Temperatures
+    temperatures: List[Dict[str, Any]] = []
+    primary_temp: Optional[float] = None
+
+    try:
+        if hasattr(psutil, "sensors_temperatures"):
+            temp_dict = psutil.sensors_temperatures()
+            if temp_dict:
+                for sensor_name, entries in temp_dict.items():
+                    for entry in entries:
+                        label = entry.label or sensor_name
+                        current = round(entry.current, 1) if entry.current is not None else None
+                        high = round(entry.high, 1) if entry.high is not None else None
+                        critical = round(entry.critical, 1) if entry.critical is not None else None
+                        if current is not None:
+                            temperatures.append({
+                                "sensor": label,
+                                "current": current,
+                                "high": high,
+                                "critical": critical
+                            })
+                            if primary_temp is None or any(k in label.lower() for k in ["package", "cpu", "core 0", "soc"]):
+                                primary_temp = current
+    except Exception:
+        pass
+
+    # Linux sysfs fallback
+    if not temperatures and os.name != "nt":
+        try:
+            thermal_path = Path("/sys/class/thermal")
+            if thermal_path.exists():
+                for zone in thermal_path.glob("thermal_zone*"):
+                    type_file = zone / "type"
+                    temp_file = zone / "temp"
+                    if temp_file.exists():
+                        z_type = type_file.read_text().strip() if type_file.exists() else zone.name
+                        raw_temp = float(temp_file.read_text().strip())
+                        c_temp = round(raw_temp / 1000.0, 1) if raw_temp > 1000 else round(raw_temp, 1)
+                        temperatures.append({
+                            "sensor": z_type,
+                            "current": c_temp,
+                            "high": 85.0,
+                            "critical": 100.0
+                        })
+                        if primary_temp is None:
+                            primary_temp = c_temp
+        except Exception:
+            pass
+
+    # 3. Host Device Details
+    cpu_model = None
+    if os.name != "nt":
+        try:
+            with open("/proc/cpuinfo", "r") as f:
+                for line in f:
+                    if "model name" in line:
+                        cpu_model = line.split(":", 1)[1].strip()
+                        break
+        except Exception:
+            pass
+    if not cpu_model:
+        cpu_model = platform.processor() or "Multi-Core Host Processor"
+
+    device_info = {
+        "hostname": socket.gethostname(),
+        "platform": platform.system(),
+        "os_release": platform.release(),
+        "arch": platform.machine(),
+        "cpu_model": cpu_model,
+        "cpu_cores_physical": psutil.cpu_count(logical=False) or psutil.cpu_count(logical=True),
+        "cpu_cores_logical": psutil.cpu_count(logical=True) or 4
+    }
+
+    return {
+        "battery": battery_info,
+        "temperatures": temperatures,
+        "primary_temp": primary_temp,
+        "device": device_info
+    }
+
 @router.get("/system")
 def get_system_telemetry():
-    """Returns real-time CPU, RAM, Disk, Network throughput, and System Uptime."""
+    """Returns real-time CPU, RAM, Disk, Network throughput, Battery, Temperature, and Hardware info."""
     global _last_net_time, _last_net_io
-    
+
     cpu_percent = psutil.cpu_percent(interval=None)
     ram = psutil.virtual_memory()
     disk = psutil.disk_usage('/')
@@ -30,15 +151,17 @@ def get_system_telemetry():
     now = time.time()
     current_net_io = psutil.net_io_counters()
     elapsed = max(0.1, now - _last_net_time)
-    
+
     sent_bps = (current_net_io.bytes_sent - _last_net_io.bytes_sent) * 8 / elapsed
     recv_bps = (current_net_io.bytes_recv - _last_net_io.bytes_recv) * 8 / elapsed
-    
+
     _last_net_time = now
     _last_net_io = current_net_io
 
     sent_mbps = round(sent_bps / 1_000_000, 1)
     recv_mbps = round(recv_bps / 1_000_000, 1)
+
+    hw = get_hardware_diagnostics()
 
     return {
         "cpu_percent": round(cpu_percent, 1),
@@ -52,7 +175,11 @@ def get_system_telemetry():
         "uptime_seconds": uptime_secs,
         "uptime_formatted": uptime_str,
         "network_sent_mbps": sent_mbps,
-        "network_recv_mbps": recv_mbps
+        "network_recv_mbps": recv_mbps,
+        "battery": hw["battery"],
+        "temperatures": hw["temperatures"],
+        "primary_temp": hw["primary_temp"],
+        "device": hw["device"]
     }
 
 @router.get("/devices")

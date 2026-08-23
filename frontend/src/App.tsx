@@ -72,6 +72,7 @@ export const App: React.FC = () => {
 
   // Biometrics & Events State
   const [faces, setFaces] = useState<EnrolledPerson[]>([]);
+  const [isFaceRecognitionEnabled, setIsFaceRecognitionEnabled] = useState(true);
   const [events, setEvents] = useState<SurveillanceEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<SurveillanceEvent | null>(null);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
@@ -276,6 +277,23 @@ export const App: React.FC = () => {
     }
   }, [currentUser.role, activeTab]);
 
+  useEffect(() => {
+    if (!isFaceRecognitionEnabled && activeTab === 'faces') {
+      setActiveTab('live');
+    }
+  }, [isFaceRecognitionEnabled, activeTab]);
+
+  const fetchTrackerSettings = () => {
+    fetch('/api/stream/tracker-settings')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.detect_faces !== undefined) {
+          setIsFaceRecognitionEnabled(Boolean(data.detect_faces));
+        }
+      })
+      .catch(() => {});
+  };
+
   // Initial Pollers
   useEffect(() => {
     fetchTelemetry();
@@ -286,16 +304,19 @@ export const App: React.FC = () => {
     fetchFaces();
     fetchEvents();
     fetchUpdateCheck();
+    fetchTrackerSettings();
 
     const telemetryInterval = setInterval(fetchTelemetry, 3000);
     const eventsInterval = setInterval(fetchEvents, 4000);
     const devicesInterval = setInterval(fetchDevices, 10000);
+    const trackerInterval = setInterval(fetchTrackerSettings, 5000);
     const updateInterval = setInterval(() => fetchUpdateCheck(false), 60000);
 
     return () => {
       clearInterval(telemetryInterval);
       clearInterval(eventsInterval);
       clearInterval(devicesInterval);
+      clearInterval(trackerInterval);
       clearInterval(updateInterval);
     };
   }, []);
@@ -593,6 +614,7 @@ export const App: React.FC = () => {
         isOpenMobile={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
         userRole={currentUser.role}
+        isFaceRecognitionEnabled={isFaceRecognitionEnabled}
       />
 
       {/* Right Column (Navbar + Main Content) */}
@@ -662,6 +684,7 @@ export const App: React.FC = () => {
                     onOpenEnrollModal={() => setIsEnrollModalOpen(true)}
                     onOpenEvent={handleOpenEvent}
                     userRole={currentUser.role}
+                    isFaceRecognitionEnabled={isFaceRecognitionEnabled}
                   />
                 </div>
               </div>
@@ -689,6 +712,7 @@ export const App: React.FC = () => {
                   onOpenEnrollModal={() => setIsEnrollModalOpen(true)}
                   onOpenEvent={handleOpenEvent}
                   userRole={currentUser.role}
+                  isFaceRecognitionEnabled={isFaceRecognitionEnabled}
                 />
               </div>
             </div>
@@ -729,7 +753,7 @@ export const App: React.FC = () => {
           )}
 
           {/* VIEW 4: BIOMETRICS & FACES */}
-          {activeTab === 'faces' && (
+          {activeTab === 'faces' && isFaceRecognitionEnabled && (
             <div className="flex-1 min-h-0 flex flex-col">
               <FaceProfilesView
                 faces={faces}

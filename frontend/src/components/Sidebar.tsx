@@ -20,6 +20,7 @@ interface SidebarProps {
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
   userRole?: string;
+  isFaceRecognitionEnabled?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -31,6 +32,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile = false,
   onCloseMobile,
   userRole = 'admin',
+  isFaceRecognitionEnabled = true,
 }) => {
   const isViewer = userRole === 'viewer';
 
@@ -38,7 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'live', label: 'Live Surveillance', icon: Video },
     { id: 'recordings', label: 'Recordings', icon: Film },
     { id: 'events', label: 'Events', icon: Bell },
-    { id: 'faces', label: 'Biometrics & Faces', icon: ScanFace },
+    ...(isFaceRecognitionEnabled ? [{ id: 'faces', label: 'Biometrics & Faces', icon: ScanFace }] : []),
   ];
 
   const adminNav = [

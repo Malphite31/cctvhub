@@ -1,3 +1,28 @@
+export interface BatteryTelemetry {
+  has_battery: boolean;
+  percent: number | null;
+  power_plugged: boolean;
+  status: string;
+  time_left_formatted?: string | null;
+}
+
+export interface ThermalSensorInfo {
+  sensor: string;
+  current: number;
+  high?: number | null;
+  critical?: number | null;
+}
+
+export interface HostDeviceInfo {
+  hostname: string;
+  platform: string;
+  os_release: string;
+  arch: string;
+  cpu_model: string;
+  cpu_cores_physical: number;
+  cpu_cores_logical: number;
+}
+
 export interface SystemTelemetry {
   cpu_percent: number;
   ram_used_mb: number;
@@ -11,6 +36,10 @@ export interface SystemTelemetry {
   uptime_formatted?: string;
   network_sent_mbps?: number;
   network_recv_mbps?: number;
+  battery?: BatteryTelemetry;
+  temperatures?: ThermalSensorInfo[];
+  primary_temp?: number | null;
+  device?: HostDeviceInfo;
 }
 
 export interface UpdateCheckInfo {
