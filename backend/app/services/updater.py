@@ -183,10 +183,11 @@ class AppUpdaterService:
                 _log(f">> Application directory: {install_dir}")
 
                 # Step 1: Pull Git updates
-                _log(">> [1/4] Fetching and pulling latest code from GitHub...")
+                _log(">> [1/4] Fetching and synchronizing latest code from GitHub...")
                 self.update_status = "downloading"
+                subprocess.run(["git", "fetch", "--all"], cwd=str(install_dir), capture_output=True, timeout=60)
                 res = subprocess.run(
-                    ["git", "pull", "origin", "main"],
+                    ["git", "reset", "--hard", "origin/main"],
                     cwd=str(install_dir),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
@@ -195,7 +196,18 @@ class AppUpdaterService:
                 )
                 _log(res.stdout.strip())
                 if res.returncode != 0:
-                    raise Exception(f"Git pull failed: {res.stdout}")
+                    subprocess.run(["git", "stash"], cwd=str(install_dir), capture_output=True)
+                    res = subprocess.run(
+                        ["git", "pull", "origin", "main"],
+                        cwd=str(install_dir),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        timeout=60
+                    )
+                    _log(res.stdout.strip())
+                    if res.returncode != 0:
+                        raise Exception(f"Git sync failed: {res.stdout}")
 
                 # Step 2: Update Python dependencies
                 _log(">> [2/4] Upgrading backend dependencies...")

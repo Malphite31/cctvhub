@@ -15,7 +15,7 @@ fi
 echo ">> Fetching latest updates from Git repository..."
 git fetch --all
 BRANCH=$(git rev-parse --abbrev-ref HEAD || echo "main")
-git pull origin "$BRANCH"
+git reset --hard "origin/$BRANCH" || git pull origin "$BRANCH"
 
 # 3. Check if running as native systemd service on Host / LXC
 IS_SYSTEMD=false
