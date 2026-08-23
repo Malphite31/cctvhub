@@ -134,7 +134,24 @@ def init_db():
                     INSERT INTO cameras (id, name, source, resolution, fps, zone, is_online, created_at)
                     VALUES ('0', 'Primary Live Camera', '0', '1920x1080', 60, 'Front Entrance', 1, ?)
                 """, (now,))
-            cursor.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES ('cameras_seeded', '1')")
+        # User Sessions & Device Audit Log Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT UNIQUE NOT NULL,
+                username TEXT NOT NULL,
+                display_name TEXT,
+                role TEXT NOT NULL,
+                ip_address TEXT,
+                device_info TEXT,
+                location TEXT,
+                login_time INTEGER NOT NULL,
+                last_heartbeat INTEGER NOT NULL,
+                logout_time INTEGER,
+                logout_reason TEXT DEFAULT 'active', -- 'active', 'manual_logout', 'tab_closed', 'inactive_timeout'
+                status TEXT DEFAULT 'active' -- 'active', 'ended'
+            )
+        """)
 
         conn.commit()
 
@@ -514,6 +531,99 @@ def delete_user(username: str) -> bool:
         cursor.execute("DELETE FROM users WHERE username = ?", (username.strip(),))
         conn.commit()
         return cursor.rowcount > 0
+
+
+# --- User Session & Audit Logging Database Operations ---
+
+def create_user_session(
+    session_id: str,
+    username: str,
+    display_name: str,
+    role: str,
+    ip_address: str,
+    device_info: str,
+    location: str
+) -> Dict[str, Any]:
+    now = int(time.time())
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO user_sessions (
+                session_id, username, display_name, role, ip_address,
+                device_info, location, login_time, last_heartbeat, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+        """, (session_id, username, display_name, role, ip_address, device_info, location, now, now))
+        conn.commit()
+        session_id_row = cursor.lastrowid
+
+    return {
+        "id": session_id_row,
+        "session_id": session_id,
+        "username": username,
+        "display_name": display_name,
+        "role": role,
+        "ip_address": ip_address,
+        "device_info": device_info,
+        "location": location,
+        "login_time": now,
+        "last_heartbeat": now,
+        "status": "active"
+    }
+
+def update_session_heartbeat(session_id: str) -> bool:
+    now = int(time.time())
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE user_sessions
+            SET last_heartbeat = ?, status = 'active'
+            WHERE session_id = ? AND status = 'active'
+        """, (now, session_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def end_user_session(session_id: str, reason: str = "manual_logout") -> bool:
+    now = int(time.time())
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE user_sessions
+            SET logout_time = ?, logout_reason = ?, status = 'ended'
+            WHERE session_id = ? AND status = 'active'
+        """, (now, reason, session_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def cleanup_stale_sessions(timeout_seconds: int = 75) -> int:
+    """Auto-mark sessions as ended if heartbeat missed for more than timeout_seconds."""
+    threshold = int(time.time()) - timeout_seconds
+    now = int(time.time())
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE user_sessions
+            SET logout_time = last_heartbeat, logout_reason = 'tab_closed_or_timeout', status = 'ended'
+            WHERE status = 'active' AND last_heartbeat < ?
+        """, (threshold,))
+        conn.commit()
+        return cursor.rowcount
+
+def list_user_sessions(limit: int = 100) -> List[Dict[str, Any]]:
+    # Run automatic cleanup first to update inactive sessions
+    cleanup_stale_sessions(75)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, session_id, username, display_name, role, ip_address,
+                   device_info, location, login_time, last_heartbeat,
+                   logout_time, logout_reason, status
+            FROM user_sessions
+            ORDER BY login_time DESC
+            LIMIT ?
+        """, (limit,))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
 
 
 

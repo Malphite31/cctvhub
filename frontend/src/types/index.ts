@@ -159,4 +159,30 @@ export interface CustomTracker {
   delta?: number;
 }
 
+export interface UserAccount {
+  id: number;
+  username: string;
+  display_name: string;
+  role: 'admin' | 'viewer';
+  created_at: number;
+  last_login?: number;
+}
+
+export interface UserSessionLog {
+  id: number;
+  session_id: string;
+  username: string;
+  display_name?: string;
+  role: string;
+  ip_address: string;
+  device_info: string;
+  location: string;
+  login_time: number;
+  last_heartbeat: number;
+  logout_time?: number;
+  logout_reason: string;
+  status: 'active' | 'ended';
+}
+
+
 

@@ -1,7 +1,7 @@
 import time
 import secrets
-from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends, Header
+from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from pydantic import BaseModel
 
 from ..core.database import (
@@ -12,13 +12,69 @@ from ..core.database import (
     update_user_profile,
     list_all_users,
     delete_user,
+    create_user_session,
+    update_session_heartbeat,
+    end_user_session,
+    list_user_sessions,
     log_event
 )
 
 router = APIRouter()
 
-# In-memory active tokens mapping: token -> {username, role, expires_at}
-ACTIVE_SESSIONS = {}
+# In-memory active tokens mapping: token -> {username, role, session_id, expires_at}
+ACTIVE_SESSIONS: Dict[str, Dict[str, Any]] = {}
+
+def _parse_device_info(user_agent: str) -> str:
+    if not user_agent:
+        return "Unknown Device / Web Client"
+    ua = user_agent.lower()
+    
+    # Platform Detection
+    platform = "Desktop"
+    if "iphone" in ua:
+        platform = "iPhone"
+    elif "ipad" in ua:
+        platform = "iPad"
+    elif "android" in ua:
+        platform = "Android Device"
+    elif "windows" in ua:
+        platform = "Windows PC"
+    elif "macintosh" in ua or "mac os" in ua:
+        platform = "Mac"
+    elif "linux" in ua:
+        platform = "Linux System"
+
+    # Browser Detection
+    browser = "Browser"
+    if "cctv" in ua or "standalone" in ua or "mobile app" in ua:
+        browser = "CCTV Mobile App"
+    elif "edg" in ua:
+        browser = "Edge"
+    elif "chrome" in ua and "crios" not in ua:
+        browser = "Chrome"
+    elif "safari" in ua and "chrome" not in ua:
+        browser = "Safari"
+    elif "firefox" in ua or "fxios" in ua:
+        browser = "Firefox"
+
+    return f"{browser} on {platform}"
+
+def _parse_location(ip: str) -> str:
+    if not ip or ip in ["127.0.0.1", "::1", "localhost"]:
+        return "Local Host (Internal)"
+    if (
+        ip.startswith("192.168.") or
+        ip.startswith("10.") or
+        ip.startswith("172.16.") or
+        ip.startswith("172.17.") or
+        ip.startswith("172.18.") or
+        ip.startswith("172.19.") or
+        ip.startswith("172.2") or
+        ip.startswith("172.30.") or
+        ip.startswith("172.31.")
+    ):
+        return f"Home LAN ({ip})"
+    return f"Remote WAN ({ip})"
 
 class LoginRequest(BaseModel):
     username: str
@@ -33,25 +89,55 @@ class CreateUserRequest(BaseModel):
     username: str
     password: str
     display_name: str
-    role: Optional[str] = "operator"
+    role: Optional[str] = "viewer"
+
+class QuitSessionRequest(BaseModel):
+    token: Optional[str] = None
+    session_id: Optional[str] = None
 
 @router.post("/login")
-def login(req: LoginRequest):
-    """Authenticate user with credentials from SQLite database."""
+def login(req: LoginRequest, request: Request):
+    """Authenticate user, create session audit record with Device, Location, IP, and Time."""
     user = authenticate_user(req.username, req.password)
+    
+    # Extract client IP and device user-agent
+    client_ip = (
+        request.headers.get("x-forwarded-for", "").split(",")[0].strip() or
+        request.headers.get("x-real-ip") or
+        (request.client.host if request.client else "127.0.0.1")
+    )
+    user_agent = request.headers.get("user-agent", "")
+    device_info = _parse_device_info(user_agent)
+    location = _parse_location(client_ip)
+
     if not user:
-        # Also log security audit
+        # Log failed security attempt
         log_event(
             event_type="security",
             camera_id="AUTH",
             title=f"Failed Login Attempt: {req.username}",
-            details="Invalid username or password"
+            details=f"Invalid credentials from {client_ip} ({device_info})"
         )
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    # Generate secure session token
+    # Generate secure session token and unique session ID
     token = f"cctv_tok_{secrets.token_hex(24)}"
+    session_id = f"sess_{secrets.token_hex(16)}"
+
+    # Record active session in SQLite audit log
+    create_user_session(
+        session_id=session_id,
+        username=user["username"],
+        display_name=user["display_name"],
+        role=user["role"],
+        ip_address=client_ip,
+        device_info=device_info,
+        location=location
+    )
+
+    # Cache in-memory
     ACTIVE_SESSIONS[token] = {
+        "session_id": session_id,
         "username": user["username"],
         "display_name": user["display_name"],
         "role": user["role"],
@@ -63,13 +149,14 @@ def login(req: LoginRequest):
     log_event(
         event_type="security",
         camera_id="AUTH",
-        title=f"User Login: {user['username']}",
-        details=f"Authorized session started ({user['role'].upper()})"
+        title=f"User Login: {user['username']} ({user['role'].upper()})",
+        details=f"Connected from {client_ip} on {device_info} [{location}]"
     )
 
     return {
         "status": "success",
         "token": token,
+        "session_id": session_id,
         "user": {
             "id": user["id"],
             "username": user["username"],
@@ -79,19 +166,60 @@ def login(req: LoginRequest):
         }
     }
 
-@router.post("/logout")
-def logout(authorization: Optional[str] = Header(None)):
-    """Terminate active session."""
+@router.post("/session/heartbeat")
+def session_heartbeat(authorization: Optional[str] = Header(None)):
+    """Keep active user session alive."""
+    if not authorization:
+        return {"status": "ignored"}
+    token = authorization.replace("Bearer ", "").strip()
+    session = ACTIVE_SESSIONS.get(token)
+    if session and session.get("session_id"):
+        update_session_heartbeat(session["session_id"])
+        return {"status": "alive", "session_id": session["session_id"]}
+    return {"status": "ok"}
+
+@router.post("/session/quit")
+def session_quit(req: Optional[QuitSessionRequest] = None, authorization: Optional[str] = Header(None)):
+    """Called on beforeunload / pagehide / app quit to record disconnect timestamp."""
+    token = ""
     if authorization:
         token = authorization.replace("Bearer ", "").strip()
-        ACTIVE_SESSIONS.pop(token, None)
+    elif req and req.token:
+        token = req.token.replace("Bearer ", "").strip()
+
+    session_id = req.session_id if (req and req.session_id) else None
+
+    if token and token in ACTIVE_SESSIONS:
+        sess = ACTIVE_SESSIONS.pop(token)
+        if not session_id:
+            session_id = sess.get("session_id")
+
+    if session_id:
+        end_user_session(session_id, reason="tab_closed_or_quit")
+        return {"status": "quit_recorded", "session_id": session_id}
+
+    return {"status": "ok"}
+
+@router.post("/logout")
+def logout(authorization: Optional[str] = Header(None)):
+    """Terminate active session and log sign-out time."""
+    if authorization:
+        token = authorization.replace("Bearer ", "").strip()
+        session = ACTIVE_SESSIONS.pop(token, None)
+        if session and session.get("session_id"):
+            end_user_session(session["session_id"], reason="manual_logout")
+            log_event(
+                event_type="security",
+                camera_id="AUTH",
+                title=f"User Logout: {session.get('username')}",
+                details=f"Session ended gracefully"
+            )
     return {"status": "logged_out"}
 
 @router.get("/me")
 def get_current_user(authorization: Optional[str] = Header(None)):
     """Get active session details."""
     if not authorization:
-        # Fallback to root admin
         admin = get_user_by_username("admin")
         if admin:
             admin.pop("password_hash", None)
@@ -101,13 +229,16 @@ def get_current_user(authorization: Optional[str] = Header(None)):
     token = authorization.replace("Bearer ", "").strip()
     session = ACTIVE_SESSIONS.get(token)
     if not session:
-        # Check if root admin token
         if token.startswith("cctv_sec_"):
             admin = get_user_by_username("admin")
             if admin:
                 admin.pop("password_hash", None)
                 return {"authenticated": True, "user": admin}
         raise HTTPException(status_code=401, detail="Session expired or invalid")
+
+    # Update heartbeat
+    if session.get("session_id"):
+        update_session_heartbeat(session["session_id"])
 
     user = get_user_by_username(session["username"])
     if not user:
@@ -139,31 +270,49 @@ def change_password(req: ChangePasswordRequest):
     return {"status": "success", "message": "Password updated successfully"}
 
 @router.get("/users")
-def get_all_users():
+def get_all_users(authorization: Optional[str] = Header(None)):
     """List all registered system users."""
     return {"users": list_all_users()}
 
 @router.post("/users/create")
-def register_user(req: CreateUserRequest):
-    """Register a new user account."""
+def register_user(req: CreateUserRequest, authorization: Optional[str] = Header(None)):
+    """Register a new user account (e.g. family viewer or admin)."""
     try:
         new_user = create_user(
             username=req.username,
             password=req.password,
             display_name=req.display_name,
-            role=req.role or "operator"
+            role=req.role or "viewer"
+        )
+        log_event(
+            event_type="security",
+            camera_id="AUTH",
+            title=f"New User Created: {req.username} ({req.role or 'viewer'})",
+            details=f"Account created for {req.display_name}"
         )
         return {"status": "success", "user": new_user}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.delete("/users/{username}")
-def remove_user(username: str):
+def remove_user(username: str, authorization: Optional[str] = Header(None)):
     """Delete a user account."""
     try:
         success = delete_user(username)
         if not success:
             raise HTTPException(status_code=404, detail="User not found")
+        log_event(
+            event_type="security",
+            camera_id="AUTH",
+            title=f"User Deleted: {username}",
+            details="Account removed by administrator"
+        )
         return {"status": "success", "username": username}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/sessions")
+def get_session_logs(limit: int = 100, authorization: Optional[str] = Header(None)):
+    """List session audit logs with Device, Location, IP, Login Time, and Quit Time."""
+    sessions = list_user_sessions(limit=limit)
+    return {"sessions": sessions}

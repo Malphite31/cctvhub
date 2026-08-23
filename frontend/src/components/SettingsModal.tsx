@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { CameraDevice, S3Config, SambaConfig, StorageLocationInfo } from '../types';
+import {
+  CameraDevice,
+  S3Config,
+  SambaConfig,
+  StorageLocationInfo,
+  UserAccount,
+  UserSessionLog
+} from '../types';
 import { CameraEditModal } from './CameraEditModal';
 import {
   Settings as SettingsIcon,
@@ -24,7 +31,13 @@ import {
   Trash2,
   Plus,
   RefreshCw,
-  CameraOff
+  CameraOff,
+  Users,
+  Laptop,
+  Smartphone,
+  LogOut,
+  Shield,
+  Activity
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -40,6 +53,7 @@ interface SettingsModalProps {
   storageLocation: StorageLocationInfo | null;
   onRefreshStorageLocation: () => void;
   onShowToast: (msg: string, isErr?: boolean) => void;
+  userRole?: string;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -55,9 +69,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   storageLocation,
   onRefreshStorageLocation,
   onShowToast,
+  userRole = 'admin',
 }) => {
-  const [activeTab, setActiveTab] = useState<'hardware' | 'storage' | 's3' | 'samba' | 'security'>('hardware');
+  const isViewer = userRole === 'viewer';
+  const [activeTab, setActiveTab] = useState<'hardware' | 'storage' | 's3' | 'samba' | 'security' | 'users' | 'sessions'>(
+    () => (userRole === 'viewer' ? 'security' : 'hardware')
+  );
   const [customPath, setCustomPath] = useState('');
+
+  // Multi-user & Family State
+  const [usersList, setUsersList] = useState<UserAccount[]>([]);
+  const [sessionsList, setSessionsList] = useState<UserSessionLog[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+
+  // New User Form State
+  const [addUserUsername, setAddUserUsername] = useState('');
+  const [addUserPassword, setAddUserPassword] = useState('');
+  const [addUserDisplayName, setAddUserDisplayName] = useState('');
+  const [addUserRole, setAddUserRole] = useState<'viewer' | 'admin'>('viewer');
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
 
   // User Profile & Security State
   const [username, setUsername] = useState(() => localStorage.getItem('cctv_username') || 'admin');
@@ -179,9 +210,100 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     } catch {}
   };
 
+  const fetchUsers = async () => {
+    setIsLoadingUsers(true);
+    try {
+      const res = await fetch('/api/auth/users');
+      if (res.ok) {
+        const data = await res.json();
+        setUsersList(data.users || []);
+      }
+    } catch {} finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  const fetchSessions = async () => {
+    setIsLoadingSessions(true);
+    try {
+      const res = await fetch('/api/auth/sessions?limit=100');
+      if (res.ok) {
+        const data = await res.json();
+        setSessionsList(data.sessions || []);
+      }
+    } catch {} finally {
+      setIsLoadingSessions(false);
+    }
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addUserUsername.trim() || !addUserPassword.trim()) {
+      onShowToast('Username and password are required', true);
+      return;
+    }
+    if (addUserPassword.length < 4) {
+      onShowToast('Password must be at least 4 characters', true);
+      return;
+    }
+    setIsCreatingUser(true);
+    try {
+      const res = await fetch('/api/auth/users/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: addUserUsername.trim(),
+          password: addUserPassword.trim(),
+          display_name: addUserDisplayName.trim() || addUserUsername.trim(),
+          role: addUserRole,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        onShowToast(data.detail || 'Failed to create user', true);
+        return;
+      }
+      onShowToast(`Account created for "${data.user?.display_name || addUserUsername}" (${addUserRole})`);
+      setAddUserUsername('');
+      setAddUserPassword('');
+      setAddUserDisplayName('');
+      setAddUserRole('viewer');
+      fetchUsers();
+    } catch {
+      onShowToast('Error connecting to user service', true);
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
+
+  const handleDeleteUser = async (u: string) => {
+    if (u === 'admin') {
+      onShowToast('Cannot delete root admin account', true);
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to remove account "${u}"?`)) return;
+    try {
+      const res = await fetch(`/api/auth/users/${encodeURIComponent(u)}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        onShowToast(`User "${u}" removed`);
+        fetchUsers();
+      } else {
+        const data = await res.json();
+        onShowToast(data.detail || 'Failed to delete user', true);
+      }
+    } catch {
+      onShowToast('Error deleting user', true);
+    }
+  };
+
   // Fetch configs on open
   useEffect(() => {
     if (!isOpen) return;
+
+    if (activeTab === 'users') fetchUsers();
+    if (activeTab === 'sessions') fetchSessions();
 
     if (storageLocation) {
       setCustomPath(storageLocation.recordings_path);
@@ -200,7 +322,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (data.config) setSambaConfig(data.config);
       })
       .catch(() => {});
-  }, [isOpen, storageLocation]);
+  }, [isOpen, activeTab, storageLocation]);
 
   const handleSaveProfileAndSecurity = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -410,18 +532,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Responsive Horizontal Scrollable Tabs */}
         <div className="flex items-center gap-1 px-3 py-1.5 border-b border-zinc-800/80 bg-zinc-900/30 overflow-x-auto shrink-0 no-scrollbar">
-          {[
-            { id: 'hardware', label: 'Devices', icon: Video },
-            { id: 'security', label: 'Account & Security', icon: KeyRound },
-            { id: 'storage', label: 'Save Path', icon: HardDrive },
-            { id: 's3', label: 'Cloud S3', icon: Cloud },
-            { id: 'samba', label: 'Samba NAS', icon: Server },
-          ].map((t) => {
+          {(isViewer
+            ? [{ id: 'security', label: 'My Account', icon: KeyRound }]
+            : [
+                { id: 'hardware', label: 'Devices', icon: Video },
+                { id: 'security', label: 'Admin Account', icon: KeyRound },
+                { id: 'users', label: 'Users & Family', icon: Users },
+                { id: 'sessions', label: 'Device & Session Logs', icon: Activity },
+                { id: 'storage', label: 'Save Path', icon: HardDrive },
+                { id: 's3', label: 'Cloud S3', icon: Cloud },
+                { id: 'samba', label: 'Samba NAS', icon: Server },
+              ]
+          ).map((t) => {
             const Icon = t.icon;
             const isSelected = activeTab === t.id;
             return (
               <button
                 key={t.id}
+                type="button"
                 onClick={() => setActiveTab(t.id as any)}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono whitespace-nowrap transition-colors ${
                   isSelected
@@ -1106,6 +1234,292 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 >
                   Save Samba Settings
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: USERS & FAMILY ACCOUNTS */}
+          {activeTab === 'users' && !isViewer && (
+            <div className="space-y-3.5 text-xs">
+              {/* Add New User Card */}
+              <div className="p-3.5 rounded border border-zinc-800 bg-zinc-900/40 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-zinc-800/60">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-blue-400" />
+                    <div>
+                      <h3 className="font-semibold text-zinc-100 font-mono text-xs uppercase">
+                        Add Family Member or Operator
+                      </h3>
+                      <p className="text-[10px] text-zinc-400">
+                        Create family accounts to share live CCTV feeds & DVR playback without admin or delete rights.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleCreateUser} className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-mono text-zinc-400 mb-1">
+                        Username <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. mom, dad, kids_ipad"
+                        value={addUserUsername}
+                        onChange={(e) => setAddUserUsername(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-zinc-100 text-xs focus:border-blue-500 focus:outline-none font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-mono text-zinc-400 mb-1">
+                        Password <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="password"
+                        required
+                        placeholder="••••••••"
+                        value={addUserPassword}
+                        onChange={(e) => setAddUserPassword(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-zinc-100 text-xs focus:border-blue-500 focus:outline-none font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-mono text-zinc-400 mb-1">
+                        Display Name / Relation
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Mom's Phone, Living Room TV"
+                        value={addUserDisplayName}
+                        onChange={(e) => setAddUserDisplayName(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-zinc-100 text-xs focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-mono text-zinc-400 mb-1">
+                        Account Role & Permissions
+                      </label>
+                      <select
+                        value={addUserRole}
+                        onChange={(e) => setAddUserRole(e.target.value as any)}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-zinc-100 text-xs focus:border-blue-500 focus:outline-none font-mono"
+                      >
+                        <option value="viewer">Family Viewer (View Only - No Deletes/Settings)</option>
+                        <option value="admin">Administrator (Full System & Camera Control)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      disabled={isCreatingUser}
+                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-mono font-medium rounded text-xs flex items-center gap-1.5 shadow-xs transition-colors disabled:opacity-50"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>{isCreatingUser ? 'Creating Account...' : 'Create Account'}</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Existing Users List */}
+              <div className="p-3.5 rounded border border-zinc-800 bg-zinc-900/40 space-y-2.5">
+                <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/60">
+                  <div className="flex items-center gap-1.5">
+                    <Shield className="h-3.5 w-3.5 text-emerald-400" />
+                    <span className="font-semibold text-zinc-200 font-mono text-[11px] uppercase">
+                      Registered Accounts ({usersList.length})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchUsers}
+                    disabled={isLoadingUsers}
+                    className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-[10px] font-mono flex items-center gap-1"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${isLoadingUsers ? 'animate-spin' : ''}`} />
+                    <span>Refresh</span>
+                  </button>
+                </div>
+
+                {usersList.length === 0 ? (
+                  <div className="py-4 text-center text-zinc-500 font-mono text-xs">
+                    Loading accounts...
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {usersList.map((u) => {
+                      const isAdmin = u.role === 'admin';
+                      return (
+                        <div
+                          key={u.username}
+                          className="flex items-center justify-between p-2.5 rounded bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`p-1.5 rounded-full ${isAdmin ? 'bg-blue-950/80 text-blue-400 border border-blue-800/60' : 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'}`}>
+                              <User className="h-3.5 w-3.5" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-zinc-100 font-mono text-xs">{u.username}</span>
+                                <span className="text-zinc-400 text-[11px]">({u.display_name})</span>
+                                <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono uppercase font-bold tracking-wider ${
+                                  isAdmin
+                                    ? 'bg-blue-900/40 text-blue-300 border border-blue-800/50'
+                                    : 'bg-emerald-900/40 text-emerald-300 border border-emerald-800/50'
+                                }`}>
+                                  {isAdmin ? 'Admin' : 'Family Viewer'}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-zinc-500 font-mono">
+                                Created: {new Date(u.created_at * 1000).toLocaleDateString()}
+                                {u.last_login ? ` • Last active: ${new Date(u.last_login * 1000).toLocaleTimeString()}` : ' • Never logged in'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {u.username !== 'admin' && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUser(u.username)}
+                              className="p-1.5 rounded text-zinc-500 hover:text-rose-400 hover:bg-rose-950/30 transition-colors"
+                              title={`Delete account "${u.username}"`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 7: DEVICE & SESSION AUDIT LOGS */}
+          {activeTab === 'sessions' && !isViewer && (
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 rounded border border-zinc-800 bg-zinc-900/40 space-y-2.5">
+                <div className="flex items-center justify-between pb-2 border-b border-zinc-800/60 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-emerald-400" />
+                    <div>
+                      <h3 className="font-semibold text-zinc-100 font-mono text-xs uppercase">
+                        Active & Recent User Sessions ({sessionsList.length})
+                      </h3>
+                      <p className="text-[10px] text-zinc-400">
+                        Tracks client devices, IP addresses, location origin, and exact login / quit timestamps.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={fetchSessions}
+                    disabled={isLoadingSessions}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-mono transition-colors"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${isLoadingSessions ? 'animate-spin' : ''}`} />
+                    <span>Refresh Logs</span>
+                  </button>
+                </div>
+
+                {sessionsList.length === 0 ? (
+                  <div className="py-6 text-center text-zinc-500 font-mono text-xs">
+                    No session activity recorded yet.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
+                    {sessionsList.map((sess) => {
+                      const isActive = sess.status === 'active';
+                      const isMobile = sess.device_info.toLowerCase().includes('phone') || sess.device_info.toLowerCase().includes('android') || sess.device_info.toLowerCase().includes('ipad');
+                      const formatDT = (ts?: number) => {
+                        if (!ts) return '—';
+                        const d = new Date(ts * 1000);
+                        return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour12: false })}`;
+                      };
+
+                      return (
+                        <div
+                          key={sess.session_id || sess.id}
+                          className={`p-2.5 rounded border transition-colors ${
+                            isActive
+                              ? 'bg-emerald-950/20 border-emerald-800/60'
+                              : 'bg-zinc-900 border-zinc-800/80'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2 flex-wrap sm:flex-nowrap">
+                            <div className="flex items-start gap-2 min-w-0">
+                              <div className={`p-1.5 rounded-md shrink-0 mt-0.5 ${
+                                isActive ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-800 text-zinc-400'
+                              }`}>
+                                {isMobile ? <Smartphone className="h-3.5 w-3.5" /> : <Laptop className="h-3.5 w-3.5" />}
+                              </div>
+
+                              <div className="space-y-0.5 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-semibold text-zinc-100 font-mono text-xs">
+                                    {sess.username}
+                                  </span>
+                                  {sess.display_name && (
+                                    <span className="text-[11px] text-zinc-400">({sess.display_name})</span>
+                                  )}
+                                  <span className={`px-1 py-0.2 rounded text-[8px] font-mono uppercase font-bold ${
+                                    sess.role === 'admin'
+                                      ? 'bg-blue-900/40 text-blue-300 border border-blue-800/40'
+                                      : 'bg-zinc-800 text-zinc-300'
+                                  }`}>
+                                    {sess.role}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2 text-[10px] text-zinc-400 font-mono flex-wrap">
+                                  <span className="text-zinc-300">{sess.device_info}</span>
+                                  <span>•</span>
+                                  <span className="text-blue-400 flex items-center gap-0.5">
+                                    <Globe className="h-2.5 w-2.5" />
+                                    {sess.ip_address}
+                                  </span>
+                                  <span>•</span>
+                                  <span className="text-zinc-500">[{sess.location}]</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Status & Timestamp */}
+                            <div className="text-right shrink-0 space-y-0.5">
+                              {isActive ? (
+                                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 font-mono text-[9px] font-bold animate-pulse">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                  <span>ACTIVE NOW</span>
+                                </div>
+                              ) : (
+                                <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono text-[9px]">
+                                  <LogOut className="h-2.5 w-2.5 text-zinc-500" />
+                                  <span className="capitalize">{sess.logout_reason.replace(/_/g, ' ')}</span>
+                                </div>
+                              )}
+
+                              <div className="text-[9px] font-mono text-zinc-500 space-y-0.5">
+                                <div>In: {formatDT(sess.login_time)}</div>
+                                {!isActive && sess.logout_time && (
+                                  <div>Out: {formatDT(sess.logout_time)}</div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}

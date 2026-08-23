@@ -34,6 +34,16 @@ export const App: React.FC = () => {
     return Boolean(localStorage.getItem('cctv_auth_token') || sessionStorage.getItem('cctv_auth_token'));
   });
 
+  const [currentUser, setCurrentUser] = useState<{
+    username: string;
+    display_name: string;
+    role: string;
+  }>(() => ({
+    username: localStorage.getItem('cctv_username') || sessionStorage.getItem('cctv_username') || 'admin',
+    display_name: localStorage.getItem('cctv_display_name') || sessionStorage.getItem('cctv_display_name') || 'Administrator',
+    role: localStorage.getItem('cctv_role') || sessionStorage.getItem('cctv_role') || 'admin',
+  }));
+
   const [activeTab, setActiveTab] = useState<'live' | 'recordings' | 'events' | 'faces' | 'storage' | 'system'>('live');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
@@ -200,6 +210,61 @@ export const App: React.FC = () => {
       }
     } catch {}
   };
+
+  // User Session Heartbeat & Profile Sync
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Fetch user profile to ensure synced permissions
+    const token = localStorage.getItem('cctv_auth_token') || sessionStorage.getItem('cctv_auth_token');
+    if (token) {
+      fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.user) {
+            setCurrentUser(data.user);
+            localStorage.setItem('cctv_username', data.user.username);
+            localStorage.setItem('cctv_display_name', data.user.display_name);
+            localStorage.setItem('cctv_role', data.user.role);
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Keepalive Heartbeat every 25s
+    const sendHeartbeat = () => {
+      const curToken = localStorage.getItem('cctv_auth_token') || sessionStorage.getItem('cctv_auth_token');
+      if (curToken) {
+        fetch('/api/auth/session/heartbeat', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${curToken}` }
+        }).catch(() => {});
+      }
+    };
+
+    sendHeartbeat();
+    const heartbeatInterval = setInterval(sendHeartbeat, 25000);
+
+    // Record Disconnect / Quit timestamp on tab close or navigation away
+    const handleQuit = () => {
+      const curToken = localStorage.getItem('cctv_auth_token') || sessionStorage.getItem('cctv_auth_token');
+      if (curToken && navigator.sendBeacon) {
+        const blob = new Blob([JSON.stringify({ token: curToken })], { type: 'application/json' });
+        navigator.sendBeacon('/api/auth/session/quit', blob);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleQuit);
+    window.addEventListener('pagehide', handleQuit);
+
+    return () => {
+      clearInterval(heartbeatInterval);
+      window.removeEventListener('beforeunload', handleQuit);
+      window.removeEventListener('pagehide', handleQuit);
+    };
+  }, [isAuthenticated]);
 
   // Initial Pollers
   useEffect(() => {
@@ -469,7 +534,11 @@ export const App: React.FC = () => {
 
   const handleLoginSuccess = (user: { username: string; display_name: string; role: string }) => {
     setIsAuthenticated(true);
-    showToast(`Welcome back, ${user.display_name}`);
+    setCurrentUser(user);
+    localStorage.setItem('cctv_username', user.username);
+    localStorage.setItem('cctv_display_name', user.display_name);
+    localStorage.setItem('cctv_role', user.role);
+    showToast(`Welcome back, ${user.display_name} (${user.role === 'admin' ? 'Administrator' : 'Family Member'})`);
     fetchTelemetry();
     fetchDevices();
     fetchStorageLocation();
@@ -622,6 +691,7 @@ export const App: React.FC = () => {
                 onBatchDeleteSnapshots={handleBatchDeleteSnapshots}
                 onRefresh={fetchRecordings}
                 onShowToast={showToast}
+                userRole={currentUser.role}
               />
             </div>
           )}
@@ -722,6 +792,7 @@ export const App: React.FC = () => {
         storageLocation={storageLocation}
         onRefreshStorageLocation={fetchStorageLocation}
         onShowToast={showToast}
+        userRole={currentUser.role}
       />
 
       {/* Face Enrollment Modal */}

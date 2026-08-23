@@ -28,6 +28,7 @@ interface DVRTimelineProps {
   onBatchDeleteSnapshots?: (filenames: string[]) => void;
   onRefresh: () => void;
   onShowToast: (msg: string, isErr?: boolean) => void;
+  userRole?: string;
 }
 
 export const DVRTimeline: React.FC<DVRTimelineProps> = ({
@@ -40,7 +41,9 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
   onBatchDeleteSnapshots,
   onRefresh,
   onShowToast,
+  userRole = 'admin',
 }) => {
+  const isViewer = userRole === 'viewer';
   const [activeTab, setActiveTab] = useState<'clips' | 'snapshots'>('clips');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClips, setSelectedClips] = useState<string[]>([]);
@@ -299,7 +302,7 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
             )}
           </div>
 
-          {currentSelectedCount > 0 && (
+          {currentSelectedCount > 0 && !isViewer && (
             <div className="flex items-center gap-2 animate-in fade-in duration-150">
               <button
                 onClick={handleBatchDeleteSelected}
@@ -434,13 +437,15 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
                             </button>
                           </div>
 
-                          <button
-                            onClick={() => onDeleteClip(clip.filename)}
-                            className="p-1 rounded bg-[#161616] hover:bg-rose-950/80 text-zinc-500 hover:text-rose-400 transition-colors"
-                            title="Delete Clip"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
+                          {!isViewer && (
+                            <button
+                              onClick={() => onDeleteClip(clip.filename)}
+                              className="p-1 rounded bg-[#161616] hover:bg-rose-950/80 text-zinc-500 hover:text-rose-400 transition-colors"
+                              title="Delete Clip"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -552,13 +557,15 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
                             </a>
                           </div>
 
-                          <button
-                            onClick={() => onDeleteSnapshot(snap.filename)}
-                            className="p-1 rounded bg-[#161616] hover:bg-rose-950/80 text-zinc-500 hover:text-rose-400 transition-colors"
-                            title="Delete Snapshot"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
+                          {!isViewer && (
+                            <button
+                              onClick={() => onDeleteSnapshot(snap.filename)}
+                              className="p-1 rounded bg-[#161616] hover:bg-rose-950/80 text-zinc-500 hover:text-rose-400 transition-colors"
+                              title="Delete Snapshot"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
