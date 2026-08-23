@@ -46,7 +46,11 @@ if [ "$IS_SYSTEMD" = true ]; then
     # Restart systemd service
     if [ -f "/etc/systemd/system/cctv-hub.service" ]; then
         echo ">> Restarting systemd service 'cctv-hub'..."
-        sudo systemctl restart cctv-hub || systemctl restart cctv-hub
+        if command -v sudo &> /dev/null; then
+            sudo systemctl restart cctv-hub
+        else
+            systemctl restart cctv-hub
+        fi
         echo ">> Systemd service 'cctv-hub' restarted successfully!"
     fi
 
