@@ -1,6 +1,7 @@
 import cv2
 import time
 import os
+import json
 import math
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
@@ -12,7 +13,8 @@ from ..core.database import (
     list_enrolled_faces,
     FACES_DIR,
     list_custom_trackers,
-    update_tracker_state
+    update_tracker_state,
+    get_db
 )
 from .motion_detector import motion_detector
 
@@ -79,9 +81,12 @@ class VisionTracker:
         self.show_center_reticles = True
         self.show_metadata_tags = True
         self.show_motion_vectors = True
-        self.detect_faces = True
+        self.detect_faces = False # Disabled by default for ultra-low CPU utilization
         self.detect_motion = True
         self.hud_theme = "cyber_blue"
+
+        # Load persisted settings from database
+        self._load_persisted_settings()
 
         # Classifiers
         self.face_cascade = None
@@ -109,6 +114,26 @@ class VisionTracker:
 
         # Event logging cooldowns
         self._last_logged_events = {}
+
+    def _load_persisted_settings(self):
+        try:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT value FROM system_config WHERE key = 'vision_tracker_settings'")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    data = json.loads(row[0])
+                    if "enabled" in data: self.enabled = bool(data["enabled"])
+                    if "show_bounding_boxes" in data: self.show_bounding_boxes = bool(data["show_bounding_boxes"])
+                    if "show_corner_markers" in data: self.show_corner_markers = bool(data["show_corner_markers"])
+                    if "show_center_reticles" in data: self.show_center_reticles = bool(data["show_center_reticles"])
+                    if "show_metadata_tags" in data: self.show_metadata_tags = bool(data["show_metadata_tags"])
+                    if "show_motion_vectors" in data: self.show_motion_vectors = bool(data["show_motion_vectors"])
+                    if "detect_faces" in data: self.detect_faces = bool(data["detect_faces"])
+                    if "detect_motion" in data: self.detect_motion = bool(data["detect_motion"])
+                    if "hud_theme" in data: self.hud_theme = str(data["hud_theme"])
+        except Exception:
+            pass
 
     def _init_classifiers(self):
         try:
@@ -185,6 +210,19 @@ class VisionTracker:
         if "detect_faces" in settings_dict: self.detect_faces = bool(settings_dict["detect_faces"])
         if "detect_motion" in settings_dict: self.detect_motion = bool(settings_dict["detect_motion"])
         if "hud_theme" in settings_dict: self.hud_theme = str(settings_dict["hud_theme"])
+
+        # Persist to database
+        try:
+            val = json.dumps(self.get_settings())
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT OR REPLACE INTO system_config (key, value) VALUES ('vision_tracker_settings', ?)",
+                    (val,)
+                )
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Error saving vision tracker settings: {e}")
 
     def get_settings(self) -> Dict[str, Any]:
         return {

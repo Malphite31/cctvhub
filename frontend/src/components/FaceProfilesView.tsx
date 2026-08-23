@@ -32,6 +32,42 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [profileToDelete, setProfileToDelete] = useState<EnrolledPerson | null>(null);
+  const [isDetectFacesActive, setIsDetectFacesActive] = useState(false);
+  const [isUpdatingEngine, setIsUpdatingEngine] = useState(false);
+
+  React.useEffect(() => {
+    fetch('/api/stream/tracker-settings')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.detect_faces !== undefined) {
+          setIsDetectFacesActive(Boolean(data.detect_faces));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleToggleEngine = async () => {
+    setIsUpdatingEngine(true);
+    const nextState = !isDetectFacesActive;
+    try {
+      const getRes = await fetch('/api/stream/tracker-settings');
+      const curSettings = getRes.ok ? await getRes.json() : {};
+      const updated = { ...curSettings, detect_faces: nextState };
+
+      const res = await fetch('/api/stream/tracker-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+      if (res.ok) {
+        setIsDetectFacesActive(nextState);
+      }
+    } catch {
+      // Ignore
+    } finally {
+      setIsUpdatingEngine(false);
+    }
+  };
 
   const filteredFaces = faces.filter((f) =>
     f.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -61,17 +97,27 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
           </div>
         </div>
 
-        <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#222222] flex items-center justify-between shadow-md">
+        <div 
+          onClick={handleToggleEngine}
+          className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#222222] hover:border-zinc-700 flex items-center justify-between shadow-md cursor-pointer transition-colors"
+          title="Click to toggle Facial Recognition Engine ON/OFF"
+        >
           <div className="min-w-0">
             <span className="text-[9px] sm:text-[10px] text-zinc-500 font-mono uppercase tracking-wider block truncate">
               Biometric Engine
             </span>
-            <div className="text-[11px] sm:text-xs font-bold text-emerald-400 font-mono mt-1 flex items-center gap-1.5 truncate">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-              <span className="truncate">60 FPS ACTIVE</span>
+            <div className={`text-[11px] sm:text-xs font-bold font-mono mt-1 flex items-center gap-1.5 truncate ${
+              isDetectFacesActive ? 'text-emerald-400' : 'text-zinc-400'
+            }`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${isDetectFacesActive ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'} shrink-0`} />
+              <span className="truncate">{isDetectFacesActive ? '15 FPS ACTIVE' : 'DISABLED (ECO)'}</span>
             </div>
           </div>
-          <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-emerald-950/60 border border-emerald-800/40 flex items-center justify-center text-emerald-400 shrink-0">
+          <div className={`h-7 w-7 sm:h-8 sm:w-8 rounded-lg border flex items-center justify-center shrink-0 ${
+            isDetectFacesActive 
+              ? 'bg-emerald-950/60 border-emerald-800/40 text-emerald-400' 
+              : 'bg-zinc-900 border-zinc-800 text-zinc-500'
+          }`}>
             <Cpu className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </div>
         </div>
@@ -120,7 +166,22 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap">
+          <button
+            type="button"
+            onClick={handleToggleEngine}
+            disabled={isUpdatingEngine}
+            className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-mono font-medium transition-colors ${
+              isDetectFacesActive
+                ? 'bg-emerald-950/70 border-emerald-800/80 text-emerald-300 hover:bg-emerald-900/60'
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-850 hover:text-zinc-200'
+            }`}
+            title="Toggle Facial Recognition On/Off"
+          >
+            <ScanFace className="h-3.5 w-3.5" />
+            <span>Engine: {isDetectFacesActive ? 'ON' : 'OFF (ECO)'}</span>
+          </button>
+
           <button
             onClick={onRefresh}
             className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#2a2a2a] bg-[#161616] hover:bg-[#202020] text-zinc-300 hover:text-white text-xs font-mono transition-colors"

@@ -28,7 +28,10 @@ import {
   Plus,
   RefreshCw,
   CameraOff,
-  ChevronDown
+  ChevronDown,
+  ScanFace,
+  Eye,
+  Activity
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -61,9 +64,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   userRole = 'admin',
 }) => {
   const isViewer = userRole === 'viewer';
-  const [activeTab, setActiveTab] = useState<'security' | 's3' | 'samba' | 'hardware'>('security');
+  const [activeTab, setActiveTab] = useState<'security' | 'vision' | 's3' | 'samba' | 'hardware'>('security');
   const [camToDelete, setCamToDelete] = useState<CameraDevice | null>(null);
   const [isDeletingCam, setIsDeletingCam] = useState(false);
+
+  // Vision & AI Tracker Settings State
+  const [visionSettings, setVisionSettings] = useState({
+    enabled: true,
+    detect_faces: false,
+    detect_motion: true,
+    show_bounding_boxes: true,
+    show_corner_markers: true,
+    show_center_reticles: true,
+    show_metadata_tags: true,
+    show_motion_vectors: true,
+    hud_theme: 'cyber_blue',
+  });
 
   // User Profile & Security State
   const [username, setUsername] = useState(() => localStorage.getItem('cctv_username') || 'admin');
@@ -219,7 +235,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (data.config) setSambaConfig(data.config);
       })
       .catch(() => {});
+
+    fetch('/api/stream/tracker-settings')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data) setVisionSettings((prev) => ({ ...prev, ...data }));
+      })
+      .catch(() => {});
   }, [isOpen, activeTab]);
+
+  const handleUpdateVisionSetting = async (key: string, value: any) => {
+    const updated = { ...visionSettings, [key]: value };
+    setVisionSettings(updated);
+    try {
+      const res = await fetch('/api/stream/tracker-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+      if (res.ok) {
+        if (key === 'detect_faces') {
+          onShowToast(value ? 'Facial recognition engine enabled' : 'Facial recognition disabled (Power Saving Mode)');
+        } else if (key === 'detect_motion') {
+          onShowToast(value ? 'Motion detection engine enabled' : 'Motion detection disabled');
+        } else {
+          onShowToast('Vision HUD settings updated');
+        }
+      }
+    } catch {
+      onShowToast('Failed to update vision settings', true);
+    }
+  };
 
   const handleSaveProfileAndSecurity = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -401,6 +447,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             ? [{ id: 'security', label: 'My Account', icon: KeyRound }]
             : [
                 { id: 'security', label: 'Account & Security', icon: KeyRound },
+                { id: 'vision', label: 'AI & Vision', icon: ScanFace },
                 { id: 's3', label: 'Cloud S3', icon: Cloud },
                 { id: 'samba', label: 'Samba NAS', icon: Server },
                 { id: 'hardware', label: 'Devices', icon: Video },
@@ -667,6 +714,158 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <ShieldCheck className="h-3 w-3" />
                   {cloudflareStatus}
                 </span>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: AI & VISION ANALYTICS */}
+          {activeTab === 'vision' && (
+            <div className="space-y-3 text-xs">
+              {/* Facial Recognition Master Feature Toggle */}
+              <div className="p-3.5 rounded-xl border border-zinc-800 bg-zinc-900/50 space-y-3 shadow-xs">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className={`p-2 rounded-lg border shrink-0 mt-0.5 ${
+                      visionSettings.detect_faces 
+                        ? 'bg-blue-600/10 border-blue-500/30 text-blue-400' 
+                        : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-400'
+                    }`}>
+                      <ScanFace className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-zinc-100 font-mono text-xs uppercase tracking-wide">
+                          Biometric Facial Recognition Engine
+                        </span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-semibold uppercase ${
+                          visionSettings.detect_faces
+                            ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-800/60'
+                            : 'bg-zinc-800/80 text-zinc-400 border border-zinc-700/60'
+                        }`}>
+                          {visionSettings.detect_faces ? 'Active • 15 FPS Inference' : 'Disabled • Low CPU / Eco'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                        Scans camera video streams in real-time against enrolled biometric face profiles. Disable this feature to minimize host CPU consumption and reduce temperatures on low-power hardware.
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+                    <input
+                      type="checkbox"
+                      checked={visionSettings.detect_faces}
+                      onChange={(e) => handleUpdateVisionSetting('detect_faces', e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Motion Detection Master Feature Toggle */}
+              <div className="p-3.5 rounded-xl border border-zinc-800 bg-zinc-900/50 space-y-3 shadow-xs">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className={`p-2 rounded-lg border shrink-0 mt-0.5 ${
+                      visionSettings.detect_motion 
+                        ? 'bg-emerald-600/10 border-emerald-500/30 text-emerald-400' 
+                        : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-400'
+                    }`}>
+                      <Activity className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-zinc-100 font-mono text-xs uppercase tracking-wide">
+                          Real-time Motion Detection
+                        </span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-semibold uppercase ${
+                          visionSettings.detect_motion
+                            ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-800/60'
+                            : 'bg-zinc-800/80 text-zinc-400 border border-zinc-700/60'
+                        }`}>
+                          {visionSettings.detect_motion ? 'Active' : 'Disabled'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                        Monitors motion vector triggers to automate instant DVR snapshot captures and cloud recordings.
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+                    <input
+                      type="checkbox"
+                      checked={visionSettings.detect_motion}
+                      onChange={(e) => handleUpdateVisionSetting('detect_motion', e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+              </div>
+
+              {/* HUD Visual Markers & Overlay Switches */}
+              <div className="p-3 rounded-xl border border-zinc-800 bg-zinc-900/40 space-y-2.5">
+                <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/60">
+                  <div className="flex items-center gap-1.5">
+                    <Eye className="h-3.5 w-3.5 text-purple-400" />
+                    <span className="font-semibold text-zinc-200 font-mono text-[11px] uppercase">
+                      HUD Overlays & Tactical Visuals
+                    </span>
+                  </div>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <span className="text-[10px] text-zinc-400 font-mono">Master HUD:</span>
+                    <input
+                      type="checkbox"
+                      checked={visionSettings.enabled}
+                      onChange={(e) => handleUpdateVisionSetting('enabled', e.target.checked)}
+                      className="h-3.5 w-3.5 accent-blue-600 rounded"
+                    />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <div className="flex items-center justify-between p-2 rounded bg-zinc-950 border border-zinc-850">
+                    <span className="text-zinc-300 font-mono text-[11px]">Bounding Boxes</span>
+                    <input
+                      type="checkbox"
+                      checked={visionSettings.show_bounding_boxes}
+                      onChange={(e) => handleUpdateVisionSetting('show_bounding_boxes', e.target.checked)}
+                      className="h-3.5 w-3.5 accent-blue-600 rounded cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded bg-zinc-950 border border-zinc-850">
+                    <span className="text-zinc-300 font-mono text-[11px]">Center Reticles</span>
+                    <input
+                      type="checkbox"
+                      checked={visionSettings.show_center_reticles}
+                      onChange={(e) => handleUpdateVisionSetting('show_center_reticles', e.target.checked)}
+                      className="h-3.5 w-3.5 accent-blue-600 rounded cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded bg-zinc-950 border border-zinc-850">
+                    <span className="text-zinc-300 font-mono text-[11px]">Corner Markers</span>
+                    <input
+                      type="checkbox"
+                      checked={visionSettings.show_corner_markers}
+                      onChange={(e) => handleUpdateVisionSetting('show_corner_markers', e.target.checked)}
+                      className="h-3.5 w-3.5 accent-blue-600 rounded cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded bg-zinc-950 border border-zinc-850">
+                    <span className="text-zinc-300 font-mono text-[11px]">Metadata Tags</span>
+                    <input
+                      type="checkbox"
+                      checked={visionSettings.show_metadata_tags}
+                      onChange={(e) => handleUpdateVisionSetting('show_metadata_tags', e.target.checked)}
+                      className="h-3.5 w-3.5 accent-blue-600 rounded cursor-pointer"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           )}
