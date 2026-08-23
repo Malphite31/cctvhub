@@ -163,19 +163,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleSetResolution = async (resStr: string) => {
     setCamResolution(resStr);
-    let w = 1920, h = 1080, fps = 60;
-    if (resStr.includes('3840x2160') || resStr.includes('4K')) {
-      w = 3840; h = 2160; fps = 30;
-    } else if (resStr.includes('1920x1080') || resStr.includes('1080p')) {
-      w = 1920; h = 1080; fps = 60;
-    } else if (resStr.includes('1280x720') || resStr.includes('720p')) {
-      w = 1280; h = 720; fps = 60;
-    } else if (resStr.includes('640x480') || resStr.includes('VGA')) {
-      w = 640; h = 480; fps = 60;
-    }
+    const parts = resStr.split('x');
+    const w = parseInt(parts[0], 10) || 1920;
+    const h = parseInt(parts[1], 10) || 1080;
+    const fps = 60;
 
     try {
-      const res = await fetch(`/api/stream/resolution?dev=${activeDevice}&width=${w}&height=${h}&fps=${fps}`, {
+      const res = await fetch(`/api/stream/resolution?dev=${encodeURIComponent(activeDevice)}&width=${w}&height=${h}&fps=${fps}`, {
         method: 'POST'
       });
       if (res.ok) {
@@ -535,55 +529,69 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
 
                 {/* Active Camera Resolution & Picture Quality */}
-                {devices.length > 0 && (
-                  <div className="pt-2 border-t border-zinc-800/60 space-y-2">
-                    <div className="flex justify-between items-center text-[10px] font-mono text-zinc-400">
-                      <span>Camera Stream Resolution (Dev {activeDevice}):</span>
-                      <span className="text-blue-400 font-bold">{camResolution}</span>
-                    </div>
-                    <select
-                      value={camResolution}
-                      onChange={(e) => handleSetResolution(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded p-1.5 text-zinc-200 text-xs font-mono outline-none cursor-pointer"
-                    >
-                      <option value="3840x2160">3840x2160 (4K UHD) @ 30 FPS</option>
-                      <option value="1920x1080">1920x1080 (1080p FHD) @ 60 FPS</option>
-                      <option value="1280x720">1280x720 (720p HD) @ 60 FPS</option>
-                      <option value="640x480">640x480 (VGA) @ 60 FPS</option>
-                    </select>
+                {devices.length > 0 && (() => {
+                  const activeCamObj = devices.find(d => d.device === activeDevice);
+                  const activeCamResolutions = (activeCamObj?.supported_resolutions && activeCamObj.supported_resolutions.length > 0)
+                    ? activeCamObj.supported_resolutions
+                    : (activeCamObj?.resolutions && activeCamObj.resolutions.length > 0)
+                      ? activeCamObj.resolutions.map(r => ({ label: r, value: r.includes('(') ? (r.match(/\((.*?)\)/)?.[1] || r) : r, fps: `${activeCamObj.fps || 60} FPS` }))
+                      : [
+                          { label: '1080p FHD (1920x1080)', value: '1920x1080', fps: '60 FPS' },
+                          { label: '720p HD (1280x720)', value: '1280x720', fps: '60 FPS' },
+                          { label: 'VGA (640x480)', value: '640x480', fps: '60 FPS' },
+                        ];
 
-                    <div className="grid grid-cols-2 gap-3 pt-1">
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] font-mono text-zinc-400">
-                          <span>Brightness</span>
-                          <span>{camBrightness}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={camBrightness}
-                          onChange={(e) => handleSetAdjustments(Number(e.target.value), camContrast)}
-                          className="w-full h-1 bg-zinc-800 rounded appearance-none cursor-pointer accent-blue-500"
-                        />
+                  return (
+                    <div className="pt-2 border-t border-zinc-800/60 space-y-2">
+                      <div className="flex justify-between items-center text-[10px] font-mono text-zinc-400">
+                        <span>Camera Stream Resolution (Dev {activeDevice}):</span>
+                        <span className="text-blue-400 font-bold">{camResolution}</span>
                       </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] font-mono text-zinc-400">
-                          <span>Contrast</span>
-                          <span>{camContrast}%</span>
+                      <select
+                        value={camResolution}
+                        onChange={(e) => handleSetResolution(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded p-1.5 text-zinc-200 text-xs font-mono outline-none cursor-pointer"
+                      >
+                        {activeCamResolutions.map((res) => (
+                          <option key={res.value} value={res.value}>
+                            {res.label} • {res.fps}
+                          </option>
+                        ))}
+                      </select>
+
+                      <div className="grid grid-cols-2 gap-3 pt-1">
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[10px] font-mono text-zinc-400">
+                            <span>Brightness</span>
+                            <span>{camBrightness}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={camBrightness}
+                            onChange={(e) => handleSetAdjustments(Number(e.target.value), camContrast)}
+                            className="w-full h-1 bg-zinc-800 rounded appearance-none cursor-pointer accent-blue-500"
+                          />
                         </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={camContrast}
-                          onChange={(e) => handleSetAdjustments(camBrightness, Number(e.target.value))}
-                          className="w-full h-1 bg-zinc-800 rounded appearance-none cursor-pointer accent-blue-500"
-                        />
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[10px] font-mono text-zinc-400">
+                            <span>Contrast</span>
+                            <span>{camContrast}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={camContrast}
+                            onChange={(e) => handleSetAdjustments(camBrightness, Number(e.target.value))}
+                            className="w-full h-1 bg-zinc-800 rounded appearance-none cursor-pointer accent-blue-500"
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
 
               {/* Microphones */}

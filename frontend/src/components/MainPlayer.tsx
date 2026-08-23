@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StreamStats, CameraDevice, TrackerSettings, CustomTracker } from '../types';
+import { StreamStats, CameraDevice, CameraResolutionOption, TrackerSettings, CustomTracker } from '../types';
 import { TrackerHUDOverlay } from './TrackerHUDOverlay';
 import { CustomObjectTrackerModal } from './CustomObjectTrackerModal';
 import { CameraEditModal } from './CameraEditModal';
@@ -396,27 +396,37 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     }
   };
 
-  const handleResolutionChange = async (resStr: string) => {
-    setSelectedResolution(resStr);
+  const handleResolutionChange = async (res: CameraResolutionOption | string) => {
     setShowResMenu(false);
-    let w = 1920, h = 1080, fps = 60;
-    if (resStr.includes('3840x2160') || resStr.includes('4K')) {
-      w = 3840; h = 2160; fps = 30;
-    } else if (resStr.includes('1920x1080') || resStr.includes('1080p')) {
-      w = 1920; h = 1080; fps = 60;
-    } else if (resStr.includes('1280x720') || resStr.includes('720p')) {
-      w = 1280; h = 720; fps = 60;
-    } else if (resStr.includes('640x480') || resStr.includes('VGA')) {
-      w = 640; h = 480; fps = 60;
+    let w = 1920, h = 1080, fpsVal = 60, label = '';
+    if (typeof res === 'object') {
+      label = res.label;
+      const parts = res.value.split('x');
+      w = parseInt(parts[0], 10) || 1920;
+      h = parseInt(parts[1], 10) || 1080;
+      fpsVal = parseInt(res.fps.replace(/[^0-9]/g, ''), 10) || 60;
+    } else {
+      label = res;
+      if (res.includes('3840x2160') || res.includes('4K')) {
+        w = 3840; h = 2160; fpsVal = 30;
+      } else if (res.includes('1920x1080') || res.includes('1080p')) {
+        w = 1920; h = 1080; fpsVal = 60;
+      } else if (res.includes('1280x720') || res.includes('720p')) {
+        w = 1280; h = 720; fpsVal = 60;
+      } else if (res.includes('640x480') || res.includes('VGA')) {
+        w = 640; h = 480; fpsVal = 60;
+      }
     }
+    setSelectedResolution(label || `${w}x${h}`);
 
     try {
-      await fetch(`/api/stream/resolution?dev=${activeDevice}&width=${w}&height=${h}&fps=${fps}`, {
+      await fetch(`/api/stream/resolution?dev=${encodeURIComponent(activeDevice)}&width=${w}&height=${h}&fps=${fpsVal}`, {
         method: 'POST',
       });
       if (onShowToast) {
-        onShowToast(`Stream resolution updated: ${resStr.replace(' (4K)', '')}`);
+        onShowToast(`Stream resolution updated: ${label || `${w}x${h}`}`);
       }
+      if (onRefreshDevices) onRefreshDevices();
     } catch {
       // Ignore
     }
@@ -509,6 +519,20 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     device: activeDevice || '0',
     name: 'No Camera Selected'
   });
+
+  const supportedResolutions: CameraResolutionOption[] = (currentCam?.supported_resolutions && currentCam.supported_resolutions.length > 0)
+    ? currentCam.supported_resolutions
+    : (currentCam?.resolutions && currentCam.resolutions.length > 0)
+      ? currentCam.resolutions.map(r => ({
+          label: r,
+          value: r.includes('(') ? (r.match(/\((.*?)\)/)?.[1] || r) : r,
+          fps: `${currentCam.fps || 60} FPS`
+        }))
+      : [
+          { label: '1080p FHD (1920x1080)', value: '1920x1080', fps: '60 FPS', width: 1920, height: 1080 },
+          { label: '720p HD (1280x720)', value: '1280x720', fps: '60 FPS', width: 1280, height: 720 },
+          { label: 'VGA (640x480)', value: '640x480', fps: '60 FPS', width: 640, height: 480 }
+        ];
 
   const renderControlsDock = (isFloating = false) => {
     return (
@@ -731,26 +755,24 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                 title="Change Camera Stream Resolution"
               >
                 <Monitor className="h-3 w-3 text-[#3B82F6] shrink-0" />
-                <span className="truncate max-w-[80px] sm:max-w-none">{selectedResolution.replace(' (4K)', '')} • 60 FPS</span>
+                <span className="truncate max-w-[95px] sm:max-w-none">
+                  {currentCam?.resolution || selectedResolution.replace(' (4K)', '')} • {currentCam?.fps ? `${currentCam.fps} FPS` : '60 FPS'}
+                </span>
                 <ChevronDown className="h-3 w-3 text-zinc-400 shrink-0" />
               </button>
 
               {showResMenu && (
-                <div className="absolute left-0 mt-1.5 w-48 sm:w-52 max-w-[calc(100vw-36px)] rounded-lg border border-[#222222] bg-[#161616]/95 backdrop-blur-md p-1.5 shadow-2xl z-50 space-y-0.5 font-mono text-xs animate-in fade-in zoom-in-95 duration-100">
-                  <div className="px-2 py-1 text-[9px] text-zinc-500 uppercase border-b border-[#222222]">
-                    Stream Resolution
+                <div className="absolute left-0 mt-1.5 w-48 sm:w-56 max-w-[calc(100vw-36px)] rounded-lg border border-[#222222] bg-[#161616]/95 backdrop-blur-md p-1.5 shadow-2xl z-50 space-y-0.5 font-mono text-xs animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-2 py-1 text-[9px] text-zinc-500 uppercase border-b border-[#222222] flex items-center justify-between">
+                    <span>Hardware Resolutions</span>
+                    <span className="text-[8px] text-[#3B82F6]">Live Probed</span>
                   </div>
-                  {[
-                    { label: '4K UHD (3840x2160)', value: '3840x2160', fps: '30 FPS' },
-                    { label: '1080p FHD (1920x1080)', value: '1920x1080', fps: '60 FPS' },
-                    { label: '720p HD (1280x720)', value: '1280x720', fps: '60 FPS' },
-                    { label: 'VGA (640x480)', value: '640x480', fps: '60 FPS' },
-                  ].map((res) => {
-                    const isSelected = selectedResolution.includes(res.value);
+                  {supportedResolutions.map((res) => {
+                    const isSelected = (currentCam?.resolution === res.value) || selectedResolution.includes(res.value) || selectedResolution === res.label;
                     return (
                       <button
                         key={res.value}
-                        onClick={() => handleResolutionChange(res.label)}
+                        onClick={() => handleResolutionChange(res)}
                         className={`w-full text-left px-2 py-1 rounded text-[10px] flex items-center justify-between transition-colors ${
                           isSelected
                             ? 'bg-[#3B82F6] text-white font-medium'
@@ -758,7 +780,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                         }`}
                       >
                         <span className="truncate">{res.label}</span>
-                        <span className={`text-[9px] shrink-0 ml-1 ${isSelected ? 'text-white' : 'text-zinc-500'}`}>{res.fps}</span>
+                        <span className={`text-[9px] shrink-0 ml-1.5 ${isSelected ? 'text-white' : 'text-zinc-500'}`}>{res.fps}</span>
                       </button>
                     );
                   })}

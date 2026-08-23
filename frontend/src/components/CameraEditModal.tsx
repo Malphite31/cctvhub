@@ -23,6 +23,7 @@ interface HardwareDevice {
   type: string;
   resolution?: string;
   fps?: number;
+  supported_resolutions?: { label: string; value: string; fps: string }[];
   is_available?: boolean;
 }
 
@@ -121,9 +122,11 @@ export const CameraEditModal: React.FC<CameraEditModalProps> = ({
     if (!isEditing || name === 'New Surveillance Camera') {
       setName(dev.name);
     }
-    if (dev.name.toLowerCase().includes('4k')) {
-      setResolution('3840x2160');
-      setFps(30);
+    if (dev.resolution) {
+      setResolution(dev.resolution);
+    }
+    if (dev.fps) {
+      setFps(dev.fps);
     }
   };
 
@@ -350,40 +353,57 @@ export const CameraEditModal: React.FC<CameraEditModalProps> = ({
           </div>
 
           {/* 4. TARGET RESOLUTION & FPS */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider block">
-                Target Resolution
-              </label>
-              <select
-                value={resolution}
-                onChange={(e) => setResolution(e.target.value)}
-                className="w-full bg-[#161616] border border-[#262626] rounded-lg px-3 py-2 text-white text-xs focus:border-[#3B82F6] focus:outline-none transition-colors"
-              >
-                {RESOLUTION_PRESETS.map((res) => (
-                  <option key={res.value} value={res.value}>
-                    {res.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+          {(() => {
+            const matchedDev = hardwareDevices.find(d => d.device === source || d.device === selectedHardware);
+            const availableResPresets = (matchedDev?.supported_resolutions && matchedDev.supported_resolutions.length > 0)
+              ? matchedDev.supported_resolutions
+              : RESOLUTION_PRESETS;
 
-            <div className="space-y-1">
-              <label className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider block">
-                Frame Rate (FPS)
-              </label>
-              <select
-                value={fps}
-                onChange={(e) => setFps(Number(e.target.value))}
-                className="w-full bg-[#161616] border border-[#262626] rounded-lg px-3 py-2 text-white text-xs focus:border-[#3B82F6] focus:outline-none transition-colors"
-              >
-                <option value={60}>60 FPS (Ultra Smooth)</option>
-                <option value={30}>30 FPS (Standard NVR)</option>
-                <option value={24}>24 FPS (Cinematic)</option>
-                <option value={15}>15 FPS (Bandwidth Saver)</option>
-              </select>
-            </div>
-          </div>
+            return (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider block">
+                    Target Resolution
+                  </label>
+                  <select
+                    value={resolution}
+                    onChange={(e) => {
+                      const selectedVal = e.target.value;
+                      setResolution(selectedVal);
+                      const foundPreset = availableResPresets.find(r => r.value === selectedVal);
+                      if (foundPreset && foundPreset.fps) {
+                        const parsedFps = parseInt(String(foundPreset.fps).replace(/[^0-9]/g, ''), 10);
+                        if (parsedFps) setFps(parsedFps);
+                      }
+                    }}
+                    className="w-full bg-[#161616] border border-[#262626] rounded-lg px-3 py-2 text-white text-xs focus:border-[#3B82F6] focus:outline-none transition-colors"
+                  >
+                    {availableResPresets.map((res) => (
+                      <option key={res.value} value={res.value}>
+                        {res.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider block">
+                    Frame Rate (FPS)
+                  </label>
+                  <select
+                    value={fps}
+                    onChange={(e) => setFps(Number(e.target.value))}
+                    className="w-full bg-[#161616] border border-[#262626] rounded-lg px-3 py-2 text-white text-xs focus:border-[#3B82F6] focus:outline-none transition-colors"
+                  >
+                    <option value={60}>60 FPS (Ultra Smooth)</option>
+                    <option value={30}>30 FPS (Standard NVR)</option>
+                    <option value={24}>24 FPS (Cinematic)</option>
+                    <option value={15}>15 FPS (Bandwidth Saver)</option>
+                  </select>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* 5. ASSIGNED SECURITY ZONE */}
           <div className="space-y-1.5">

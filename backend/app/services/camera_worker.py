@@ -338,6 +338,148 @@ class MultiCameraManager:
                 self.workers[dev_str] = worker
             return self.workers[dev_str]
 
+    def probe_camera_resolutions(self, source_val: Any) -> List[Dict[str, Any]]:
+        """
+        Probes real camera hardware sensor to return only the actual resolutions and frame rates
+        supported by physical hardware. Results are cached per source.
+        """
+        source_str = str(source_val).strip()
+        if hasattr(self, "_resolution_cache") and source_str in self._resolution_cache:
+            return self._resolution_cache[source_str]
+
+        if not hasattr(self, "_resolution_cache"):
+            self._resolution_cache = {}
+
+        is_windows = platform.system() == "Windows"
+        resolutions = []
+        seen = set()
+
+        # 1. On Linux, query v4l2-ctl for instant hardware capability list
+        if not is_windows and (source_str.startswith("/dev/video") or source_str.isdigit()):
+            dev_path = source_str if source_str.startswith("/dev/") else f"/dev/video{source_str}"
+            try:
+                import subprocess, re
+                out = subprocess.check_output(
+                    ["v4l2-ctl", "--list-formats-ext", "-d", dev_path],
+                    stderr=subprocess.STDOUT,
+                    timeout=2
+                ).decode("utf-8", errors="ignore")
+
+                current_size = None
+                for line in out.splitlines():
+                    size_match = re.search(r"Size:\s+Discrete\s+(\d+)x(\d+)", line)
+                    if size_match:
+                        w, h = int(size_match.group(1)), int(size_match.group(2))
+                        current_size = (w, h)
+
+                    fps_match = re.search(r"\((\d+(?:\.\d+)?)\s*fps\)", line)
+                    if fps_match and current_size:
+                        w, h = current_size
+                        fps_val = int(round(float(fps_match.group(1))))
+                        size_key = f"{w}x{h}"
+                        if size_key not in seen:
+                            seen.add(size_key)
+                            lbl = f"{w}x{h}"
+                            if w == 3840 and h == 2160: lbl = "4K UHD"
+                            elif w == 2560 and h == 1440: lbl = "2K QHD"
+                            elif w == 1920 and h == 1080: lbl = "1080p FHD"
+                            elif w == 1280 and h == 720: lbl = "720p HD"
+                            elif w == 640 and h == 480: lbl = "VGA"
+                            else: lbl = f"{h}p"
+
+                            resolutions.append({
+                                "label": f"{lbl} ({w}x{h})",
+                                "value": size_key,
+                                "fps": f"{fps_val} FPS",
+                                "width": w,
+                                "height": h
+                            })
+            except Exception:
+                pass
+
+        # 2. If Linux v4l2-ctl succeeded, cache and return
+        if resolutions:
+            resolutions.sort(key=lambda r: (r["width"] * r["height"]), reverse=True)
+            self._resolution_cache[source_str] = resolutions
+            return resolutions
+
+        # 3. Query live camera worker if running
+        if source_str in self.workers:
+            w = self.workers[source_str]
+            if w.is_hardware_active and w.resolution:
+                parts = w.resolution.split("x")
+                if len(parts) == 2:
+                    try:
+                        rw, rh = int(parts[0]), int(parts[1])
+                        size_key = f"{rw}x{rh}"
+                        if size_key not in seen:
+                            seen.add(size_key)
+                            resolutions.append({
+                                "label": f"Active ({size_key})",
+                                "value": size_key,
+                                "fps": f"{w.actual_fps or 60} FPS",
+                                "width": rw,
+                                "height": rh
+                            })
+                    except Exception:
+                        pass
+
+        # 4. Probe standard resolutions via VideoCapture
+        COMMON_MODES = [
+            (3840, 2160, "4K UHD"),
+            (2560, 1440, "2K QHD"),
+            (1920, 1080, "1080p FHD"),
+            (1280, 720, "720p HD"),
+            (1024, 768, "XGA"),
+            (800, 600, "SVGA"),
+            (640, 480, "VGA"),
+            (320, 240, "QVGA")
+        ]
+
+        try:
+            try:
+                dev_idx = int(source_str)
+            except (ValueError, TypeError):
+                dev_idx = source_str
+
+            cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW if is_windows else cv2.CAP_V4L2)
+            if not cap.isOpened():
+                cap = cv2.VideoCapture(dev_idx)
+
+            if cap.isOpened():
+                for w_cand, h_cand, label in COMMON_MODES:
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, w_cand)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h_cand)
+                    act_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    act_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    act_fps = int(cap.get(cv2.CAP_PROP_FPS)) or 30
+
+                    if act_w > 0 and act_h > 0 and (act_w == w_cand and act_h == h_cand):
+                        size_key = f"{act_w}x{act_h}"
+                        if size_key not in seen:
+                            seen.add(size_key)
+                            resolutions.append({
+                                "label": f"{label} ({size_key})",
+                                "value": size_key,
+                                "fps": f"{act_fps} FPS",
+                                "width": act_w,
+                                "height": act_h
+                            })
+                cap.release()
+        except Exception:
+            pass
+
+        if not resolutions:
+            resolutions = [
+                {"label": "1080p FHD (1920x1080)", "value": "1920x1080", "fps": "60 FPS", "width": 1920, "height": 1080},
+                {"label": "720p HD (1280x720)", "value": "1280x720", "fps": "60 FPS", "width": 1280, "height": 720},
+                {"label": "VGA (640x480)", "value": "640x480", "fps": "60 FPS", "width": 640, "height": 480}
+            ]
+
+        resolutions.sort(key=lambda r: (r["width"] * r["height"]), reverse=True)
+        self._resolution_cache[source_str] = resolutions
+        return resolutions
+
     def remove_worker(self, device_id: str):
         with self.lock:
             dev_str = str(device_id)
@@ -392,12 +534,17 @@ class MultiCameraManager:
                         is_available = True
                         test_cap.release()
 
+                probed = self.probe_camera_resolutions(idx)
+                top_res = probed[0]["value"] if probed else "1920x1080"
+                top_fps = int(probed[0]["fps"].replace(" FPS", "")) if probed else 60
+
                 devices.append({
                     "device": dev_str,
                     "name": name,
                     "type": "virtual" if ("virtual" in name.lower() or "obs" in name.lower()) else "usb",
-                    "resolution": "1920x1080",
-                    "fps": 60,
+                    "resolution": top_res,
+                    "fps": top_fps,
+                    "supported_resolutions": probed,
                     "is_available": is_available
                 })
         else:
@@ -407,13 +554,51 @@ class MultiCameraManager:
                     if entry.startswith("video"):
                         dev_path = f"/dev/{entry}"
                         name = entry
+
+                        # 1. Read real hardware device name from sysfs
+                        name_file = os.path.join(v4l_dir, entry, "name")
+                        if os.path.exists(name_file):
+                            try:
+                                with open(name_file, "r") as f:
+                                    real_name = f.read().strip()
+                                    if real_name:
+                                        name = real_name
+                            except Exception:
+                                pass
+
+                        # 2. Skip secondary metadata nodes if index > 0
+                        index_file = os.path.join(v4l_dir, entry, "index")
+                        if os.path.exists(index_file):
+                            try:
+                                with open(index_file, "r") as f:
+                                    idx_val = f.read().strip()
+                                    if idx_val and idx_val != "0":
+                                        continue
+                            except Exception:
+                                pass
+
+                        # 3. Test if device is accessible
+                        is_available = False
+                        if dev_path in self.workers and self.workers[dev_path].is_hardware_active:
+                            is_available = True
+                        else:
+                            test_cap = cv2.VideoCapture(dev_path, cv2.CAP_V4L2)
+                            if test_cap.isOpened():
+                                is_available = True
+                                test_cap.release()
+
+                        probed = self.probe_camera_resolutions(dev_path)
+                        top_res = probed[0]["value"] if probed else "1920x1080"
+                        top_fps = int(probed[0]["fps"].replace(" FPS", "")) if probed else 60
+
                         devices.append({
                             "device": dev_path,
                             "name": name,
                             "type": "usb",
-                            "resolution": "1920x1080",
-                            "fps": 60,
-                            "is_available": True
+                            "resolution": top_res,
+                            "fps": top_fps,
+                            "supported_resolutions": probed,
+                            "is_available": is_available
                         })
         return devices
 
@@ -430,23 +615,27 @@ class MultiCameraManager:
         devices = []
         for cam in db_cameras:
             dev_str = str(cam["id"])
+            source_str = cam.get("source", dev_str)
             res = cam.get("resolution", "1920x1080")
             fps = cam.get("fps", 60)
             if dev_str in self.workers:
                 w = self.workers[dev_str]
-                res = w.resolution
+                res = w.resolution or res
                 fps = w.actual_fps or fps
+
+            probed = self.probe_camera_resolutions(source_str)
 
             devices.append({
                 "device": dev_str,
                 "name": cam["name"],
-                "source": cam.get("source", dev_str),
+                "source": source_str,
                 "resolution": res,
                 "fps": fps,
                 "zone": cam.get("zone", "Main Area"),
                 "is_online": bool(cam.get("is_online", 1)),
-                "resolutions": ["3840x2160 (4K)", "1920x1080 (1080p)", "1280x720 (720p)", "640x480 (VGA)"],
-                "formats": ["3840x2160@30", "1920x1080@60", "1280x720@60", "640x480@60"]
+                "supported_resolutions": probed,
+                "resolutions": [r["label"] for r in probed],
+                "formats": [f"{r['value']}@{r['fps']}" for r in probed]
             })
 
         self._cached_devices = devices

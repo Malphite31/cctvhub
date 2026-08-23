@@ -23,13 +23,25 @@ export interface UpdateCheckInfo {
   last_checked: number;
 }
 
+export interface CameraResolutionOption {
+  label: string;
+  value: string;
+  fps: string;
+  width?: number;
+  height?: number;
+}
+
 export interface CameraDevice {
   device: string;
   name: string;
-  formats: string[];
+  formats?: string[];
   resolution?: string;
   resolutions?: string[];
+  supported_resolutions?: CameraResolutionOption[];
   fps?: number;
+  zone?: string;
+  source?: string;
+  is_online?: boolean;
 }
 
 export interface RecordingClip {
