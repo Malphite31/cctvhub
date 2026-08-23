@@ -35,7 +35,8 @@ import {
   RotateCcw,
   ZoomIn,
   Move,
-  Activity
+  Activity,
+  Scan
 } from 'lucide-react';
 
 interface MainPlayerProps {
@@ -128,6 +129,18 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
   const [isMotionModalOpen, setIsMotionModalOpen] = useState(false);
   const [isMotionDetected, setIsMotionDetected] = useState(false);
   const [motionLevel, setMotionLevel] = useState(0);
+
+  // Aspect Ratio Fit / Fill Mode (Cover vs Contain)
+  const [objectFit, setObjectFit] = useState<'cover' | 'contain'>(() => {
+    return (localStorage.getItem('cctv_fit_mode') as 'cover' | 'contain') || 'cover';
+  });
+
+  const handleToggleFitMode = () => {
+    const next = objectFit === 'cover' ? 'contain' : 'cover';
+    setObjectFit(next);
+    localStorage.setItem('cctv_fit_mode', next);
+    if (onShowToast) onShowToast(next === 'cover' ? 'Display: Fill (16:9 Edge-to-Edge)' : 'Display: Fit (Original Sensor Ratio)');
+  };
 
   // Vision Tracker Global Settings
   const [trackerSettings, setTrackerSettings] = useState<TrackerSettings>({
@@ -665,8 +678,25 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
           </div>
         </div>
 
-        {/* Right Action Buttons: Adjustments & Fullscreen */}
+        {/* Right Action Buttons: Adjustments, Aspect Fit/Fill & Fullscreen */}
         <div className={`flex items-center gap-1.5 sm:gap-2 shrink-0 ${isFloating ? 'pointer-events-auto' : ''}`}>
+          {/* Fit / Fill Aspect Mode Toggle */}
+          <button
+            type="button"
+            onClick={handleToggleFitMode}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs font-medium border transition-colors shrink-0 ${
+              objectFit === 'cover'
+                ? 'bg-[#3B82F6] border-[#3B82F6]'
+                : isFloating
+                ? 'bg-black/85 hover:bg-black border-[#333333] backdrop-blur'
+                : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
+            }`}
+            title={objectFit === 'cover' ? 'Display: Fill (16:9 Edge-to-Edge) • Click to Fit' : 'Display: Fit (Original Sensor Ratio) • Click to Fill'}
+          >
+            <Scan className="h-3.5 w-3.5" />
+            <span className="inline font-mono">{objectFit === 'cover' ? 'Fill' : 'Fit'}</span>
+          </button>
+
           {/* Tune Camera Adjustments Popover */}
           <div className="relative" ref={adjustmentsRef}>
             <button
@@ -1103,7 +1133,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                   <img
                     src={`/api/stream/live?dev=${activeDevice}`}
                     alt="Live 60 FPS CCTV Feed"
-                    className="w-full h-full object-contain bg-black select-none"
+                    className={`w-full h-full ${objectFit === 'cover' ? 'object-cover' : 'object-contain'} bg-black select-none transition-all`}
                     onDoubleClick={handleToggleFullscreen}
                     onError={() => setStreamError(true)}
                     onLoad={() => setStreamError(false)}
@@ -1178,7 +1208,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                         <img
                           src={`/api/stream/live?dev=${cam.device}`}
                           alt={cam.name}
-                          className="w-full h-full object-contain"
+                          className={`w-full h-full ${objectFit === 'cover' ? 'object-cover' : 'object-contain'} select-none`}
                         />
                         {/* Top Left Camera Name */}
                         <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/80 backdrop-blur-xs px-2 py-0.5 rounded text-[10px] font-mono text-white border border-[#222222]">

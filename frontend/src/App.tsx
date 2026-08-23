@@ -571,7 +571,7 @@ export const App: React.FC = () => {
                 </div>
 
                 {/* Desktop Right Events & Face Recognition Sidebar */}
-                <div className="hidden xl:flex w-80 2xl:w-96 flex-col gap-3 shrink-0 h-full">
+                <div className="hidden xl:flex w-80 xl:w-[380px] 2xl:w-[440px] flex-col gap-3 shrink-0 h-full">
                   <RightEventsPanel
                     events={events}
                     faces={faces}
