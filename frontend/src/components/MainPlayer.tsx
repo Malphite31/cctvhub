@@ -778,7 +778,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
             {/* 3. Bottom Player Controls Dock */}
             <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1 sm:gap-2 z-30 pointer-events-none">
               {/* Left Action Buttons Dock */}
-              <div className="flex items-center gap-1 sm:gap-1.5 pointer-events-auto overflow-x-auto no-scrollbar py-0.5 max-w-[calc(100%-76px)] sm:max-w-[calc(100%-140px)]">
+              <div className="flex items-center gap-1 sm:gap-1.5 pointer-events-auto shrink-0">
                 {/* Pause / Play */}
                 <button
                   onClick={handleTogglePlay}
@@ -885,7 +885,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
                   {/* Mic Volume Popup */}
                   {showMicMenu && (
-                    <div className="absolute bottom-full mb-2 left-0 w-56 sm:w-64 max-w-[calc(100vw-36px)] rounded-xl border border-[#222222] bg-[#121212]/95 backdrop-blur-md p-3 shadow-2xl space-y-2.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                    <div className="absolute bottom-full mb-2 left-0 sm:left-auto sm:right-0 w-60 sm:w-64 max-w-[calc(100vw-32px)] rounded-xl border border-[#262626] bg-[#141417]/95 backdrop-blur-md p-3 shadow-2xl space-y-2.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
                       <div className="flex justify-between items-center text-[11px] font-semibold text-white border-b border-[#222222] pb-1.5">
                         <span className="flex items-center gap-1.5"><Mic className="h-3.5 w-3.5 text-emerald-400" /> Microphone</span>
                         <span className="font-mono text-[10px] text-zinc-400">{volume}%</span>
