@@ -1,5 +1,5 @@
 import React from 'react';
-import { Cpu, Server, HardDrive, Radio, Video, RefreshCw, Sparkles, ArrowUpRight, CheckCircle2, Download, GitBranch } from 'lucide-react';
+import { Cpu, Server, HardDrive, Radio, Video, RefreshCw, ArrowUpRight, CheckCircle2, Download, GitBranch } from 'lucide-react';
 import { SystemTelemetry, CameraDevice, UpdateCheckInfo } from '../types';
 
 interface SystemViewProps {
@@ -65,7 +65,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[#222222]">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-[#3B82F6]/10 border border-[#3B82F6]/20 flex items-center justify-center text-[#3B82F6]">
-              <Sparkles className="h-4 w-4" />
+              <GitBranch className="h-4 w-4" />
             </div>
             <div>
               <h4 className="font-semibold text-xs text-white flex items-center gap-2">

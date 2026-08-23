@@ -11,7 +11,7 @@ import {
   Activity,
   ArrowRight,
   CheckCheck,
-  Sparkles
+  DownloadCloud
 } from 'lucide-react';
 import { SystemTelemetry, SurveillanceEvent, UpdateCheckInfo } from '../types';
 
@@ -252,7 +252,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="flex items-center gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-[10px] font-mono font-semibold transition-all animate-pulse shrink-0"
             title={`Software Update Available (${updateInfo.latest_commit}): ${updateInfo.latest_commit_message}`}
           >
-            <Sparkles className="h-3 w-3 text-amber-400 shrink-0" />
+            <DownloadCloud className="h-3 w-3 text-amber-400 shrink-0" />
             <span className="hidden sm:inline">UPDATE AVAILABLE</span>
             <span className="sm:hidden">UPDATE</span>
           </button>

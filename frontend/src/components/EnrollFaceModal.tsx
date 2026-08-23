@@ -5,7 +5,7 @@ import {
   Upload,
   UserPlus,
   ScanFace,
-  Sparkles,
+  Target,
   ShieldCheck
 } from 'lucide-react';
 
@@ -227,7 +227,7 @@ export const EnrollFaceModal: React.FC<EnrollFaceModalProps> = ({
               </div>
 
               <p className="text-[10px] text-zinc-400 font-mono bg-[#161616] p-2 rounded-lg border border-[#222222] flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-[#3B82F6] shrink-0" />
+                <Target className="h-3.5 w-3.5 text-[#3B82F6] shrink-0" />
                 <span>The optical scanner tracks moving faces in real-time and isolates only the face portrait.</span>
               </p>
             </div>

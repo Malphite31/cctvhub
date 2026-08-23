@@ -8,7 +8,7 @@ import {
   HardDrive,
   Radio,
   Clock,
-  Sparkles,
+  Scan,
   Server,
   ArrowRight,
   ShieldCheck,
@@ -323,8 +323,8 @@ export const BottomNocGrid: React.FC<BottomNocGridProps> = ({
       <div className="rounded-xl border border-[#222222] bg-[#111111] p-3.5 flex flex-col justify-between shadow-xl">
         <div className="flex items-center justify-between pb-2.5 border-b border-[#1f1f1f]">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-[#181818] border border-[#262626] text-amber-400 shadow-sm">
-              <Sparkles className="h-4 w-4" />
+            <div className="p-1.5 rounded-lg bg-[#181818] border border-[#262626] text-cyan-400 shadow-sm">
+              <Scan className="h-4 w-4" />
             </div>
             <div>
               <h4 className="font-semibold text-xs text-white font-sans tracking-tight">

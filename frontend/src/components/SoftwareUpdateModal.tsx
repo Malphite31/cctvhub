@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, RefreshCw, CheckCircle2, AlertCircle, Terminal, Sparkles, X, ArrowUpRight, Loader2 } from 'lucide-react';
+import { Download, RefreshCw, CheckCircle2, AlertCircle, Terminal, GitBranch, X, ArrowUpRight, Loader2 } from 'lucide-react';
 import { UpdateCheckInfo } from '../types';
 
 interface SoftwareUpdateModalProps {
@@ -130,7 +130,7 @@ export const SoftwareUpdateModal: React.FC<SoftwareUpdateModalProps> = ({
         <div className="p-4 sm:p-5 border-b border-[#222222] flex items-center justify-between bg-gradient-to-r from-blue-950/20 via-transparent to-transparent">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-[#3B82F6]/15 border border-[#3B82F6]/30 flex items-center justify-center text-[#3B82F6] shrink-0">
-              <Sparkles className="h-5 w-5" />
+              <GitBranch className="h-5 w-5" />
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-semibold text-white font-sans flex items-center gap-2">
