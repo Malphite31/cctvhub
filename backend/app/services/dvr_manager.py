@@ -396,15 +396,28 @@ class DVRManager:
     def list_snapshots(self) -> List[Dict[str, Any]]:
         items = []
         snap_dir = self.get_snapshots_dir()
-        for file in sorted(snap_dir.glob("*.jpg"), key=os.path.getmtime, reverse=True):
-            stat = file.stat()
-            items.append({
-                "filename": file.name,
-                "size_mb": round(stat.st_size / (1024 * 1024), 2),
-                "created_at": int(stat.st_mtime),
-                "url": f"/api/recordings/snapshots/{file.name}",
-                "path": str(file)
-            })
+        patterns = ["*.jpg", "*.jpeg", "*.png", "*.webp"]
+        files = []
+        for pat in patterns:
+            files.extend(snap_dir.glob(pat))
+            files.extend(snap_dir.glob(pat.upper()))
+
+        # Deduplicate and sort by modification time descending
+        unique_files = list({f.resolve(): f for f in files}.values())
+        for file in sorted(unique_files, key=os.path.getmtime, reverse=True):
+            try:
+                stat = file.stat()
+                size_bytes = stat.st_size
+                items.append({
+                    "filename": file.name,
+                    "size_kb": round(size_bytes / 1024, 1),
+                    "size_mb": round(size_bytes / (1024 * 1024), 2),
+                    "created_at": int(stat.st_mtime),
+                    "url": f"/api/recordings/snapshots/{file.name}",
+                    "path": str(file)
+                })
+            except Exception:
+                continue
         return items
 
 dvr_manager = DVRManager()

@@ -54,7 +54,8 @@ export interface RecordingClip {
 
 export interface SnapshotItem {
   filename: string;
-  size_kb: number;
+  size_kb?: number;
+  size_mb?: number;
   created_at: number;
   url: string;
   local_path?: string;

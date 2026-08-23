@@ -58,16 +58,21 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
   const [previewImageName, setPreviewImageName] = useState<string | null>(null);
   const [syncingFile, setSyncingFile] = useState<string | null>(null);
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
+  const formatDate = (timestamp?: number) => {
+    if (!timestamp) return 'Recent';
+    try {
+      return new Date(timestamp * 1000).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+    } catch {
+      return 'Recent';
+    }
   };
 
   const handleOpenFolder = async () => {
@@ -491,6 +496,13 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3">
                 {filteredSnapshots.map((snap) => {
                   const isSelected = selectedSnapshots.includes(snap.filename);
+                  const sizeText =
+                    typeof snap.size_kb === 'number'
+                      ? `${snap.size_kb.toFixed(0)} KB`
+                      : typeof snap.size_mb === 'number'
+                      ? `${(snap.size_mb * 1024).toFixed(0)} KB`
+                      : 'Image';
+
                   return (
                     <div
                       key={snap.filename}
@@ -539,7 +551,7 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
 
                         {/* File Size Badge */}
                         <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.2 rounded bg-black/80 backdrop-blur text-[9px] font-mono text-zinc-300">
-                          {snap.size_kb.toFixed(0)} KB
+                          {sizeText}
                         </span>
                       </div>
 
@@ -575,6 +587,24 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
                             >
                               <Download className="h-3 w-3" />
                             </a>
+
+                            <button
+                              onClick={() => handleUploadS3(snap.filename)}
+                              disabled={syncingFile === snap.filename}
+                              className="p-1 rounded bg-[#161616] hover:bg-[#202020] text-zinc-300 hover:text-white transition-colors"
+                              title="Upload to S3 Cloud"
+                            >
+                              <CloudUpload className="h-3 w-3 text-[#3B82F6]" />
+                            </button>
+
+                            <button
+                              onClick={() => handleSyncSamba(snap.filename)}
+                              disabled={syncingFile === snap.filename}
+                              className="p-1 rounded bg-[#161616] hover:bg-[#202020] text-zinc-300 hover:text-white transition-colors"
+                              title="Sync to Samba NAS"
+                            >
+                              <Server className="h-3 w-3 text-emerald-400" />
+                            </button>
                           </div>
 
                           {!isViewer && (
