@@ -15,7 +15,8 @@ import {
   Zap,
   Thermometer,
   Flame,
-  Terminal
+  Terminal,
+  Clock
 } from 'lucide-react';
 import { SystemTelemetry, CameraDevice, UpdateCheckInfo } from '../types';
 
@@ -76,27 +77,6 @@ export const SystemView: React.FC<SystemViewProps> = ({
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto space-y-3 sm:space-y-4 select-none text-xs">
-      {/* Top Header */}
-      <div className="rounded-xl border border-[#222222] bg-[#121212] p-3 sm:p-4 flex flex-wrap items-center justify-between gap-2.5">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg bg-[#3B82F6]/15 border border-[#3B82F6]/30 text-[#3B82F6] shrink-0">
-            <Cpu className="h-4 w-4" />
-          </div>
-          <div className="min-w-0">
-            <h3 className="font-semibold text-xs sm:text-sm text-white font-sans truncate">System Diagnostics & Telemetry</h3>
-            <p className="text-[10px] sm:text-[11px] text-zinc-400 font-mono truncate">Hardware resource utilization, power, thermals, and device status.</p>
-          </div>
-        </div>
-
-        <button
-          onClick={onRefresh}
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-white border border-[#333] transition-colors text-[11px] font-mono shrink-0"
-        >
-          <RefreshCw className="h-3 w-3 text-[#3B82F6]" />
-          <span>Refresh</span>
-        </button>
-      </div>
-
       {/* Software & Git Updates Card */}
       <div className="rounded-xl border border-[#222222] bg-[#121212] p-3.5 sm:p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[#222222]">
@@ -120,6 +100,16 @@ export const SystemView: React.FC<SystemViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-zinc-300 border border-[#2a2a2a] text-[11px] font-mono flex items-center gap-1.5 transition-colors"
+              title="Refresh telemetry and diagnostics"
+            >
+              <RefreshCw className="h-3 w-3 text-[#3B82F6]" />
+              <span>Refresh</span>
+            </button>
+
             {onCheckUpdate && (
               <button
                 type="button"
@@ -323,26 +313,53 @@ export const SystemView: React.FC<SystemViewProps> = ({
                   </div>
                 </div>
 
+                {/* Prominent Estimated Time Remaining / To Full */}
+                <div className="p-2 rounded-lg bg-[#161616] border border-[#222222] flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-zinc-400 text-[11px]">
+                    <Clock className="h-3.5 w-3.5 text-[#3B82F6]" />
+                    <span>{battery.power_plugged ? 'Time to Full' : 'Time Remaining'}</span>
+                  </div>
+                  <span className="font-mono font-bold text-xs text-white">
+                    {battery.time_left_formatted || (battery.percent && battery.percent >= 99 ? 'Fully Charged' : 'Calculating...')}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center py-0.5 border-b border-[#1c1c1c]">
+                  <span className="text-zinc-400 text-[11px]">Power Source</span>
+                  <span className="font-mono text-zinc-200 text-[11px]">{battery.power_source || (battery.power_plugged ? 'AC Adapter' : 'Battery')}</span>
+                </div>
+
                 <div className="flex justify-between items-center py-0.5 border-b border-[#1c1c1c]">
                   <span className="text-zinc-400 text-[11px]">Charging State</span>
                   <span className="font-mono text-emerald-400 font-medium text-[11px]">{battery.status}</span>
                 </div>
 
-                {battery.time_left_formatted && (
-                  <div className="flex justify-between items-center py-0.5">
-                    <span className="text-zinc-400 text-[11px]">Est. Runtime</span>
-                    <span className="font-mono text-zinc-300 text-[11px]">{battery.time_left_formatted}</span>
+                {(battery.voltage_v || battery.power_w || battery.health_percent || battery.cycle_count) && (
+                  <div className="flex justify-between items-center py-0.5 text-[10px] font-mono text-zinc-400">
+                    <span>Diagnostics</span>
+                    <span className="text-zinc-300">
+                      {[
+                        battery.voltage_v ? `${battery.voltage_v}V` : null,
+                        battery.power_w ? `${battery.power_w}W` : null,
+                        battery.health_percent ? `${battery.health_percent}% Health` : null,
+                        battery.cycle_count ? `${battery.cycle_count} cyc` : null
+                      ].filter(Boolean).join(' • ')}
+                    </span>
                   </div>
                 )}
               </>
             ) : (
-              <div className="p-3 rounded-lg bg-[#161616] border border-[#222222] space-y-1.5 text-center">
+              <div className="p-2.5 rounded-lg bg-[#161616] border border-[#222222] space-y-1.5 text-center">
                 <div className="flex items-center justify-center gap-1.5 text-emerald-400 font-mono font-semibold text-xs">
                   <Zap className="h-4 w-4" />
                   <span>Direct AC Mains Power</span>
                 </div>
-                <p className="text-[10px] text-zinc-400 font-mono leading-tight">
-                  Running on continuous utility AC supply (Server / Desktop Baremetal Node).
+                <div className="flex items-center justify-center gap-1.5 text-[11px] font-mono text-zinc-300">
+                  <Clock className="h-3 w-3 text-[#3B82F6]" />
+                  <span>Runtime: Unlimited Continuous AC Power</span>
+                </div>
+                <p className="text-[10px] text-zinc-500 font-mono leading-tight">
+                  Running on constant utility power (Server / Desktop Baremetal Node).
                 </p>
               </div>
             )}

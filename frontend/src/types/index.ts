@@ -4,6 +4,13 @@ export interface BatteryTelemetry {
   power_plugged: boolean;
   status: string;
   time_left_formatted?: string | null;
+  power_source?: string;
+  voltage_v?: number | null;
+  power_w?: number | null;
+  health_percent?: number | null;
+  cycle_count?: number | null;
+  technology?: string | null;
+  model?: string | null;
 }
 
 export interface ThermalSensorInfo {

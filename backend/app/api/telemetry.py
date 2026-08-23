@@ -16,13 +16,22 @@ _last_net_io = psutil.net_io_counters()
 def get_hardware_diagnostics() -> Dict[str, Any]:
     """Inspects battery status, hardware thermal sensors, and system device identity."""
     # 1. Battery Telemetry
-    battery_info = {
+    battery_info: Dict[str, Any] = {
         "has_battery": False,
         "percent": None,
         "power_plugged": True,
-        "status": "AC Mains / Wall Power (No Battery)",
-        "time_left_formatted": None
+        "status": "AC Mains Supply (No Battery)",
+        "time_left_formatted": None,
+        "power_source": "Direct AC Mains Supply",
+        "voltage_v": None,
+        "power_w": None,
+        "health_percent": None,
+        "cycle_count": None,
+        "technology": None,
+        "model": None
     }
+
+    # Step A: Check psutil
     try:
         if hasattr(psutil, "sensors_battery"):
             b = psutil.sensors_battery()
@@ -33,22 +42,99 @@ def get_hardware_diagnostics() -> Dict[str, Any]:
                 if secs and secs != psutil.POWER_TIME_UNLIMITED:
                     hrs = secs // 3600
                     mins = (secs % 3600) // 60
-                    time_left_str = f"{hrs}h {mins}m remaining"
+                    if is_plugged:
+                        time_left_str = f"{hrs}h {mins}m until full" if hrs > 0 else f"{mins}m until full"
+                    else:
+                        time_left_str = f"{hrs}h {mins}m remaining" if hrs > 0 else f"{mins}m remaining"
 
                 if is_plugged:
-                    status_text = "AC Power (100% Charged)" if b.percent >= 99 else "AC Connected (Charging)"
+                    status_text = "AC Connected (100% Fully Charged)" if b.percent >= 99 else "AC Connected (Charging)"
                 else:
-                    status_text = f"Discharging ({b.percent}%)"
+                    status_text = f"Discharging on Battery ({b.percent}%)"
 
-                battery_info = {
+                battery_info.update({
                     "has_battery": True,
                     "percent": round(b.percent, 1),
                     "power_plugged": is_plugged,
                     "status": status_text,
-                    "time_left_formatted": time_left_str
-                }
+                    "time_left_formatted": time_left_str,
+                    "power_source": "AC Adapter (Charging)" if is_plugged else "Internal Battery Power"
+                })
     except Exception:
         pass
+
+    # Step B: Check Linux sysfs /sys/class/power_supply/
+    if os.name != "nt":
+        try:
+            ps_path = Path("/sys/class/power_supply")
+            if ps_path.exists():
+                for bat in ps_path.glob("BAT*"):
+                    battery_info["has_battery"] = True
+
+                    cap_file = bat / "capacity"
+                    if cap_file.exists():
+                        try:
+                            battery_info["percent"] = float(cap_file.read_text().strip())
+                        except Exception:
+                            pass
+
+                    status_file = bat / "status"
+                    if status_file.exists():
+                        raw_status = status_file.read_text().strip()
+                        is_plugged = raw_status.lower() in ["charging", "full", "not charging"]
+                        battery_info["power_plugged"] = is_plugged
+                        if raw_status.lower() == "full" or (battery_info["percent"] and battery_info["percent"] >= 99):
+                            battery_info["status"] = "AC Connected (100% Fully Charged)"
+                        elif raw_status.lower() == "charging":
+                            battery_info["status"] = "AC Connected (Charging)"
+                        elif raw_status.lower() == "discharging":
+                            battery_info["status"] = f"Discharging on Battery ({battery_info['percent']}%)"
+                        else:
+                            battery_info["status"] = raw_status
+                        battery_info["power_source"] = "AC Power Adapter" if is_plugged else "Internal Battery Power"
+
+                    volt_file = bat / "voltage_now"
+                    if volt_file.exists():
+                        try:
+                            battery_info["voltage_v"] = round(float(volt_file.read_text().strip()) / 1_000_000.0, 2)
+                        except Exception:
+                            pass
+
+                    pwr_file = bat / "power_now"
+                    if pwr_file.exists():
+                        try:
+                            battery_info["power_w"] = round(float(pwr_file.read_text().strip()) / 1_000_000.0, 2)
+                        except Exception:
+                            pass
+
+                    tech_file = bat / "technology"
+                    if tech_file.exists():
+                        battery_info["technology"] = tech_file.read_text().strip()
+
+                    model_file = bat / "model_name"
+                    if model_file.exists():
+                        battery_info["model"] = model_file.read_text().strip()
+
+                    cycle_file = bat / "cycle_count"
+                    if cycle_file.exists():
+                        try:
+                            battery_info["cycle_count"] = int(cycle_file.read_text().strip())
+                        except Exception:
+                            pass
+
+                    efull_file = bat / "energy_full"
+                    edesign_file = bat / "energy_full_design"
+                    if efull_file.exists() and edesign_file.exists():
+                        try:
+                            efull = float(efull_file.read_text().strip())
+                            edesign = float(edesign_file.read_text().strip())
+                            if edesign > 0:
+                                battery_info["health_percent"] = round((efull / edesign) * 100.0, 1)
+                        except Exception:
+                            pass
+                    break
+        except Exception:
+            pass
 
     # 2. Hardware Temperatures
     temperatures: List[Dict[str, Any]] = []
