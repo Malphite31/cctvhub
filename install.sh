@@ -18,18 +18,22 @@ echo "  Installing CCTV Surveillance Hub on Proxmox / Host OS   "
 echo "=========================================================="
 
 # 1. Install System Packages
-echo ">> [1/6] Installing runtime dependencies (FFmpeg, Python, V4L2)..."
+echo ">> [1/6] Installing runtime dependencies (FFmpeg, Python, V4L2, Audio)..."
 apt-get update
 apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-venv \
+    python3-dev \
+    build-essential \
     ffmpeg \
     v4l-utils \
     curl \
     git \
     libgl1 \
     libglib2.0-0 \
+    libportaudio2 \
+    libsndfile1 \
     ca-certificates
 
 # 2. Install Node.js if npm is missing (for building frontend)
@@ -50,19 +54,25 @@ if [ -d "$CURRENT_DIR/backend" ] && [ "$CURRENT_DIR" != "$INSTALL_DIR" ]; then
 elif [ ! -f "$INSTALL_DIR/backend/app/main.py" ]; then
     echo ">> Cloning repository from GitHub into $INSTALL_DIR..."
     git clone https://github.com/Malphite31/cctvhub.git "$INSTALL_DIR"
+else
+    echo ">> Updating repository from GitHub in $INSTALL_DIR..."
+    git -C "$INSTALL_DIR" fetch --all || true
+    git -C "$INSTALL_DIR" reset --hard origin/main || true
 fi
 
 cd "$INSTALL_DIR"
 
 # 4. Download go2rtc binary to /usr/local/bin
 echo ">> [4/6] Installing go2rtc ultra-low latency WebRTC engine..."
-curl -L -s https://github.com/AlexxIT/go2rtc/releases/latest/download/go2rtc_linux_amd64 -o /usr/local/bin/go2rtc
-chmod +x /usr/local/bin/go2rtc
+curl -fsSL https://github.com/AlexxIT/go2rtc/releases/latest/download/go2rtc_linux_amd64 -o /usr/local/bin/go2rtc || true
+chmod +x /usr/local/bin/go2rtc 2>/dev/null || true
 
 # 5. Setup Python Virtual Environment
 echo ">> [5/6] Creating Python virtual environment & installing packages..."
-python3 -m venv .venv
-.venv/bin/pip install --upgrade pip
+if [ ! -d ".venv" ]; then
+    python3 -m venv .venv
+fi
+.venv/bin/pip install --upgrade pip setuptools wheel 2>/dev/null || true
 .venv/bin/pip install -r backend/requirements.txt
 
 # Build Frontend
