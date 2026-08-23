@@ -481,13 +481,6 @@ class VisionTracker:
                             "height": mh,
                             "color": "#EF4444"
                         })
-                        "is_triggered": True,
-                        "x": int((mx / w) * 100),
-                        "y": int((my / h) * 100),
-                        "width": int((mw / w) * 100),
-                        "height": int((mh / h) * 100),
-                        "color": "#F59E0B"
-                    })
 
         return annotated_frame, active_detections
 
