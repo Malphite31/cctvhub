@@ -15,22 +15,17 @@ export const CameraCarousel: React.FC<CameraCarouselProps> = ({
   onSelectCamera,
   onAddCamera,
 }) => {
-  // If no devices detected yet, fallback to single default webcam
-  const cameraList = devices.length > 0 ? devices : [
-    { device: '0', name: 'Primary Camera (/dev/video0)', formats: ['60 FPS', '720p', '1080p'] }
-  ];
-
   return (
     <div className="space-y-2 select-none">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold text-zinc-300">Connected Cameras</h3>
         <span className="text-[10px] text-zinc-500 font-medium">
-          {cameraList.length} Active Device{cameraList.length > 1 ? 's' : ''}
+          {devices.length} Active Device{devices.length === 1 ? '' : 's'}
         </span>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
-        {cameraList.map((cam, idx) => {
+        {devices.map((cam, idx) => {
           const camLabel = `CAM ${idx + 1}`;
           const isSelected = activeCamera === camLabel || (idx === 0 && !activeCamera);
           return (

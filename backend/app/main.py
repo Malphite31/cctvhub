@@ -7,10 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .core.config import settings
-from .core.database import init_db
 from .api import stream, recordings, telemetry, storage, faces, events, trackers, cameras, auth
-from .services.camera_worker import camera_worker
+from .services.camera_worker import camera_manager
 from .services.audio_worker import audio_worker
+from .core.database import init_db, list_configured_cameras
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,11 +18,18 @@ async def lifespan(app: FastAPI):
     init_db()
     loop = asyncio.get_running_loop()
     audio_worker.set_loop(loop)
-    camera_worker.start(settings.DEFAULT_DEVICE)
+    try:
+        configured = list_configured_cameras()
+        for cam in configured:
+            camera_manager.get_worker(cam["id"], source=cam.get("source"))
+    except Exception:
+        pass
     audio_worker.start()
     yield
     # Shutdown
-    camera_worker.stop()
+    with camera_manager.lock:
+        for worker in list(camera_manager.workers.values()):
+            worker.stop()
     audio_worker.stop()
 
 app = FastAPI(

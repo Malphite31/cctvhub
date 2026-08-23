@@ -30,12 +30,9 @@ class CameraUpdate(BaseModel):
     zone: Optional[str] = None
 
 @router.get("/list")
-def get_cameras(auto_scan: bool = True):
-    """List all configured cameras with live status. Auto-discovers hardware if empty."""
+def get_cameras():
+    """List all configured cameras with live status."""
     cams = camera_manager.get_available_cameras()
-    if not cams and auto_scan:
-        scan_hardware()
-        cams = camera_manager.get_available_cameras()
     return {"cameras": cams, "devices": cams}
 
 @router.post("/add")

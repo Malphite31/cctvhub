@@ -115,17 +115,26 @@ def init_db():
             )
         """)
 
-        cursor.execute("SELECT COUNT(*) FROM cameras")
-        if cursor.fetchone()[0] == 0:
-            now = int(time.time())
-            cursor.execute("""
-                INSERT INTO cameras (id, name, source, resolution, fps, zone, is_online, created_at)
-                VALUES ('0', 'Primary Live Camera', '0', '1920x1080', 60, 'Front Entrance', 1, ?)
-            """, (now,))
-            cursor.execute("""
-                INSERT INTO cameras (id, name, source, resolution, fps, zone, is_online, created_at)
-                VALUES ('1', 'Secondary Porch Camera', '1', '1920x1080', 60, 'Backyard Gate', 1, ?)
-            """, (now,))
+        # System Configuration Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS system_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
+
+        # Seed initial camera only once on brand-new DB setup
+        cursor.execute("SELECT value FROM system_config WHERE key = 'cameras_seeded'")
+        seeded = cursor.fetchone()
+        if not seeded:
+            cursor.execute("SELECT COUNT(*) FROM cameras")
+            if cursor.fetchone()[0] == 0:
+                now = int(time.time())
+                cursor.execute("""
+                    INSERT INTO cameras (id, name, source, resolution, fps, zone, is_online, created_at)
+                    VALUES ('0', 'Primary Live Camera', '0', '1920x1080', 60, 'Front Entrance', 1, ?)
+                """, (now,))
+            cursor.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES ('cameras_seeded', '1')")
 
         conn.commit()
 
