@@ -36,7 +36,8 @@ import {
   ZoomIn,
   Move,
   Activity,
-  Scan
+  Scan,
+  X
 } from 'lucide-react';
 
 interface MainPlayerProps {
@@ -598,12 +599,13 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
             )}
           </button>
 
-          {/* Mute / Audio with Volume Slider */}
-          <div className="relative shrink-0" ref={micMenuRef}>
+          {/* Mute / Audio with Volume Button */}
+          <div className="relative shrink-0">
             <div className={`flex items-center rounded-lg border overflow-hidden ${
               isFloating ? 'bg-black/85 border-[#333333] backdrop-blur' : 'bg-[#18181c] border-[#2c2c32]'
             }`}>
               <button
+                type="button"
                 onClick={onToggleMute}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 text-xs font-medium text-white hover:bg-white/10 transition-colors"
                 title={!isMuted ? 'Mute Microphone' : 'Enable Live Audio'}
@@ -613,68 +615,16 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
               </button>
 
               <button
+                type="button"
                 onClick={() => setShowMicMenu(!showMicMenu)}
-                className="p-1.5 sm:px-2 sm:py-1.5 border-l border-[#333333] hover:bg-white/10 text-zinc-400 hover:text-white"
-                title="Audio Device & Volume"
+                className={`p-1.5 sm:px-2 sm:py-1.5 border-l border-[#333333] hover:bg-white/10 transition-colors ${
+                  showMicMenu ? 'bg-[#3B82F6] text-white' : 'text-zinc-400 hover:text-white'
+                }`}
+                title="Audio Device, Level & Volume Settings"
               >
                 <ChevronDown className="h-3 w-3" />
               </button>
             </div>
-
-            {/* Mic Volume Popup */}
-            {showMicMenu && (
-              <div className="absolute bottom-full mb-2 left-0 sm:left-auto sm:right-0 w-60 sm:w-64 max-w-[calc(100vw-32px)] rounded-xl border border-[#262626] bg-[#141417]/95 backdrop-blur-md p-3 shadow-2xl space-y-2.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
-                <div className="flex justify-between items-center text-[11px] font-semibold text-white border-b border-[#222222] pb-1.5">
-                  <span className="flex items-center gap-1.5"><Mic className="h-3.5 w-3.5 text-emerald-400" /> Microphone</span>
-                  <span className="font-mono text-[10px] text-zinc-400">{volume}%</span>
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[10px] text-zinc-400">
-                    <span>Volume</span>
-                    <span>{volume}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={volume}
-                    onChange={(e) => onChangeVolume(Number(e.target.value))}
-                    className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[10px] text-zinc-400">
-                    <span>Level</span>
-                    <span className="font-mono text-emerald-400">{audioLevel}%</span>
-                  </div>
-                  <div className="h-1.5 w-full bg-[#222222] rounded-full overflow-hidden flex">
-                    <div
-                      className={`h-full transition-all duration-75 ${
-                        audioLevel > 75 ? 'bg-rose-500' : audioLevel > 40 ? 'bg-amber-400' : 'bg-emerald-500'
-                      }`}
-                      style={{ width: `${Math.min(100, Math.max(audioLevel > 0 ? 8 : 0, audioLevel))}%` }}
-                    />
-                  </div>
-                </div>
-
-                {audioDevices.length > 0 && (
-                  <div className="pt-1 border-t border-[#222222]">
-                    <span className="text-[9px] text-zinc-400 block mb-0.5">Input Device:</span>
-                    <select
-                      value={activeAudioDevice !== null ? activeAudioDevice : ''}
-                      onChange={(e) => onSelectAudioDevice(Number(e.target.value))}
-                      className="w-full bg-[#1a1a1a] border border-[#262626] rounded p-1 text-zinc-200 text-[10px] outline-none"
-                    >
-                      {audioDevices.map((d: any) => (
-                        <option key={d.index} value={d.index}>{d.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
 
@@ -697,215 +647,29 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
             <span className="inline font-mono">{objectFit === 'cover' ? 'Fill' : 'Fit'}</span>
           </button>
 
-          {/* Tune Camera Adjustments Popover */}
-          <div className="relative" ref={adjustmentsRef}>
-            <button
-              onClick={() => setShowAdjustmentsModal(!showAdjustmentsModal)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs font-medium border transition-colors ${
-                showAdjustmentsModal || flipH || flipV || rotation !== 0 || zoom > 1.01 || brightness !== 50 || contrast !== 50 || saturation !== 50
-                  ? 'bg-[#3B82F6] border-[#3B82F6]'
-                  : isFloating
-                  ? 'bg-black/85 hover:bg-black border-[#333333] backdrop-blur'
-                  : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
-              }`}
-              title="Camera Adjustments (Flip, Crop, Zoom, Rotate, Color)"
-            >
-              <Sliders className="h-3.5 w-3.5" />
-              <span className="inline font-mono">Tune</span>
-              {(flipH || flipV || rotation !== 0 || zoom > 1.01) && (
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-              )}
-            </button>
-
-            {showAdjustmentsModal && (
-              <div className="absolute bottom-full mb-2 right-0 w-72 sm:w-80 max-w-[calc(100vw-36px)] rounded-xl border border-[#262626] bg-[#141417]/95 backdrop-blur-md p-3.5 shadow-2xl z-50 space-y-3 font-sans text-xs animate-in fade-in zoom-in-95 duration-100">
-                {/* Header */}
-                <div className="flex justify-between items-center border-b border-[#262626] pb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Sliders className="h-3.5 w-3.5 text-[#3B82F6]" />
-                    <span className="font-semibold text-white">Camera Adjustments</span>
-                  </div>
-                  <button
-                    onClick={handleResetAdjustments}
-                    className="text-[10px] font-mono text-zinc-400 hover:text-amber-400 flex items-center gap-1 transition-colors"
-                    title="Reset all adjustments to normal defaults"
-                  >
-                    <RotateCcw className="h-2.5 w-2.5" />
-                    <span>Reset</span>
-                  </button>
-                </div>
-
-                {/* 1. Orientation & Flip */}
-                <div className="space-y-1.5">
-                  <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
-                    Orientation & Flip
-                  </span>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {/* Flip H */}
-                    <button
-                      type="button"
-                      onClick={() => updateAdjustments({ flip_h: !flipH })}
-                      className={`p-1.5 rounded-lg border text-center flex flex-col items-center gap-1 transition-colors ${
-                        flipH ? 'border-[#3B82F6] bg-[#3B82F6]/20 text-white' : 'border-[#262626] bg-[#1a1a1e] text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      <FlipHorizontal className="h-3.5 w-3.5 text-[#3B82F6]" />
-                      <span className="text-[9px] font-mono">Flip H</span>
-                    </button>
-
-                    {/* Flip V */}
-                    <button
-                      type="button"
-                      onClick={() => updateAdjustments({ flip_v: !flipV })}
-                      className={`p-1.5 rounded-lg border text-center flex flex-col items-center gap-1 transition-colors ${
-                        flipV ? 'border-[#3B82F6] bg-[#3B82F6]/20 text-white' : 'border-[#262626] bg-[#1a1a1e] text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      <FlipVertical className="h-3.5 w-3.5 text-[#3B82F6]" />
-                      <span className="text-[9px] font-mono">Flip V</span>
-                    </button>
-
-                    {/* Rotate 90 */}
-                    <button
-                      type="button"
-                      onClick={() => updateAdjustments({ rotation: (rotation + 90) % 360 })}
-                      className={`p-1.5 rounded-lg border text-center flex flex-col items-center gap-1 transition-colors ${
-                        rotation !== 0 ? 'border-[#3B82F6] bg-[#3B82F6]/20 text-white' : 'border-[#262626] bg-[#1a1a1e] text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      <RotateCw className="h-3.5 w-3.5 text-emerald-400" />
-                      <span className="text-[9px] font-mono">{rotation}°</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* 2. Digital Zoom & Crop */}
-                <div className="space-y-1.5 pt-1 border-t border-[#262626]">
-                  <div className="flex justify-between items-center text-[10px]">
-                    <span className="font-mono text-zinc-400 uppercase tracking-wider flex items-center gap-1">
-                      <ZoomIn className="h-3 w-3 text-[#3B82F6]" /> Digital Zoom / Crop
-                    </span>
-                    <span className="font-mono text-white font-semibold">{zoom.toFixed(2)}x</span>
-                  </div>
-
-                  <input
-                    type="range"
-                    min="1.0"
-                    max="3.0"
-                    step="0.05"
-                    value={zoom}
-                    onChange={(e) => updateAdjustments({ zoom: Number(e.target.value) })}
-                    className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
-                  />
-
-                  {/* Quick Zoom Presets */}
-                  <div className="flex items-center justify-between gap-1 pt-0.5">
-                    {[1.0, 1.25, 1.5, 2.0, 2.5].map((z) => (
-                      <button
-                        key={z}
-                        type="button"
-                        onClick={() => updateAdjustments({ zoom: z, pan_x: z === 1.0 ? 0 : panX, pan_y: z === 1.0 ? 0 : panY })}
-                        className={`flex-1 py-0.5 rounded text-[9px] font-mono border transition-colors ${
-                          Math.abs(zoom - z) < 0.04
-                            ? 'bg-[#3B82F6] text-white border-[#3B82F6]'
-                            : 'bg-[#1a1a1e] text-zinc-400 border-[#262626] hover:text-white'
-                        }`}
-                      >
-                        {z === 1.0 ? '1.0x (Fit)' : `${z}x`}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Pan Sliders when Zoomed */}
-                  {zoom > 1.05 && (
-                    <div className="space-y-1.5 pt-1">
-                      <div className="flex justify-between text-[9px] text-zinc-400 font-mono">
-                        <span className="flex items-center gap-1"><Move className="h-2.5 w-2.5 text-cyan-400" /> Pan X / Y</span>
-                        <span>X: {panX}% • Y: {panY}%</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <input
-                          type="range"
-                          min="-50"
-                          max="50"
-                          value={panX}
-                          onChange={(e) => updateAdjustments({ pan_x: Number(e.target.value) })}
-                          className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                          title="Pan Horizontal"
-                        />
-                        <input
-                          type="range"
-                          min="-50"
-                          max="50"
-                          value={panY}
-                          onChange={(e) => updateAdjustments({ pan_y: Number(e.target.value) })}
-                          className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                          title="Tilt Vertical"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. Picture & Color Tuning */}
-                <div className="space-y-2 pt-1 border-t border-[#262626]">
-                  <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
-                    Color & Lighting
-                  </span>
-
-                  {/* Brightness */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] text-zinc-400">
-                      <span className="flex items-center gap-1.5"><Sun className="h-3 w-3 text-amber-400" /> Brightness</span>
-                      <span className="font-mono text-white">{brightness}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={brightness}
-                      onChange={(e) => updateAdjustments({ brightness: Number(e.target.value) })}
-                      className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
-                    />
-                  </div>
-
-                  {/* Contrast */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] text-zinc-400">
-                      <span className="flex items-center gap-1.5"><Contrast className="h-3 w-3 text-purple-400" /> Contrast</span>
-                      <span className="font-mono text-white">{contrast}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={contrast}
-                      onChange={(e) => updateAdjustments({ contrast: Number(e.target.value) })}
-                      className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
-                    />
-                  </div>
-
-                  {/* Saturation */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] text-zinc-400">
-                      <span className="flex items-center gap-1.5"><Eye className="h-3 w-3 text-emerald-400" /> Saturation</span>
-                      <span className="font-mono text-white">{saturation}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={saturation}
-                      onChange={(e) => updateAdjustments({ saturation: Number(e.target.value) })}
-                      className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
+          {/* Tune Camera Adjustments Button */}
           <button
+            type="button"
+            onClick={() => setShowAdjustmentsModal(!showAdjustmentsModal)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs font-medium border transition-colors shrink-0 ${
+              showAdjustmentsModal || flipH || flipV || rotation !== 0 || zoom > 1.01 || brightness !== 50 || contrast !== 50 || saturation !== 50
+                ? 'bg-[#3B82F6] border-[#3B82F6]'
+                : isFloating
+                ? 'bg-black/85 hover:bg-black border-[#333333] backdrop-blur'
+                : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
+            }`}
+            title="Camera Adjustments (Flip, Crop, Zoom, Rotate, Color)"
+          >
+            <Sliders className="h-3.5 w-3.5" />
+            <span className="inline font-mono">Tune</span>
+            {(flipH || flipV || rotation !== 0 || zoom > 1.01) && (
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+            )}
+          </button>
+
+          {/* Fullscreen Button */}
+          <button
+            type="button"
             onClick={handleToggleFullscreen}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs font-medium border transition-colors shrink-0 ${
               isFloating ? 'bg-black/85 hover:bg-black border-[#333333] backdrop-blur' : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
@@ -1306,6 +1070,277 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
         cameraId={activeDevice}
         onShowToast={onShowToast}
       />
+
+      {/* Live Audio & Microphone Controls Modal Overlay */}
+      {showMicMenu && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-100"
+          onClick={() => setShowMicMenu(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-[#262626] bg-[#141417]/95 backdrop-blur-md p-4 shadow-2xl space-y-3.5 text-xs animate-in zoom-in-95 duration-100 select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex justify-between items-center text-xs font-semibold text-white border-b border-[#222222] pb-2">
+              <span className="flex items-center gap-1.5"><Mic className="h-4 w-4 text-emerald-400" /> Microphone & Live Audio</span>
+              <button
+                type="button"
+                onClick={() => setShowMicMenu(false)}
+                className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {/* Playback Volume */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs text-zinc-300">
+                <span>Playback Volume</span>
+                <span className="font-mono text-white font-semibold">{volume}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={volume}
+                onChange={(e) => onChangeVolume(Number(e.target.value))}
+                className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
+              />
+            </div>
+
+            {/* Live Audio Level Meter */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs text-zinc-300">
+                <span>Live Audio Level</span>
+                <span className="font-mono text-emerald-400 font-semibold">{audioLevel}%</span>
+              </div>
+              <div className="h-2 w-full bg-[#222222] rounded-full overflow-hidden flex">
+                <div
+                  className={`h-full transition-all duration-75 ${
+                    audioLevel > 75 ? 'bg-rose-500' : audioLevel > 40 ? 'bg-amber-400' : 'bg-emerald-500'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(audioLevel > 0 ? 8 : 0, audioLevel))}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Input Device Selection Dropdown */}
+            {audioDevices.length > 0 && (
+              <div className="pt-2 border-t border-[#222222] space-y-1.5">
+                <span className="text-[11px] text-zinc-400 block">Input Microphone Device:</span>
+                <select
+                  value={activeAudioDevice !== null ? activeAudioDevice : ''}
+                  onChange={(e) => onSelectAudioDevice(Number(e.target.value))}
+                  className="w-full bg-[#1a1a1a] border border-[#262626] rounded-lg p-2 text-zinc-200 text-xs outline-none focus:border-[#3B82F6]"
+                >
+                  {audioDevices.map((d: any) => (
+                    <option key={d.index} value={d.index}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Camera Adjustments Modal Overlay */}
+      {showAdjustmentsModal && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-100"
+          onClick={() => setShowAdjustmentsModal(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-[#262626] bg-[#141417]/95 backdrop-blur-md p-4 shadow-2xl z-50 space-y-3.5 font-sans text-xs animate-in zoom-in-95 duration-100 max-h-[90vh] overflow-y-auto select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex justify-between items-center border-b border-[#262626] pb-2">
+              <div className="flex items-center gap-1.5">
+                <Sliders className="h-4 w-4 text-[#3B82F6]" />
+                <span className="font-semibold text-white">Camera Adjustments</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetAdjustments}
+                  className="text-[10px] font-mono text-zinc-400 hover:text-amber-400 flex items-center gap-1 transition-colors px-2 py-0.5 rounded bg-[#1a1a1e] border border-[#2c2c30]"
+                  title="Reset all adjustments to normal defaults"
+                >
+                  <RotateCcw className="h-2.5 w-2.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAdjustmentsModal(false)}
+                  className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-white/10"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* 1. Orientation & Flip */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
+                Orientation & Flip
+              </span>
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => updateAdjustments({ flip_h: !flipH })}
+                  className={`p-2 rounded-lg border text-center flex flex-col items-center gap-1 transition-colors ${
+                    flipH ? 'border-[#3B82F6] bg-[#3B82F6]/20 text-white' : 'border-[#262626] bg-[#1a1a1e] text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <FlipHorizontal className="h-4 w-4 text-[#3B82F6]" />
+                  <span className="text-[10px] font-mono">Flip H</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => updateAdjustments({ flip_v: !flipV })}
+                  className={`p-2 rounded-lg border text-center flex flex-col items-center gap-1 transition-colors ${
+                    flipV ? 'border-[#3B82F6] bg-[#3B82F6]/20 text-white' : 'border-[#262626] bg-[#1a1a1e] text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <FlipVertical className="h-4 w-4 text-[#3B82F6]" />
+                  <span className="text-[10px] font-mono">Flip V</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => updateAdjustments({ rotation: (rotation + 90) % 360 })}
+                  className={`p-2 rounded-lg border text-center flex flex-col items-center gap-1 transition-colors ${
+                    rotation !== 0 ? 'border-[#3B82F6] bg-[#3B82F6]/20 text-white' : 'border-[#262626] bg-[#1a1a1e] text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <RotateCw className="h-4 w-4 text-emerald-400" />
+                  <span className="text-[10px] font-mono">{rotation}°</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Digital Zoom & Crop */}
+            <div className="space-y-2 pt-1 border-t border-[#262626]">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-mono text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+                  <ZoomIn className="h-3.5 w-3.5 text-[#3B82F6]" /> Digital Zoom / Crop
+                </span>
+                <span className="font-mono text-white font-semibold">{zoom.toFixed(2)}x</span>
+              </div>
+
+              <input
+                type="range"
+                min="1.0"
+                max="3.0"
+                step="0.05"
+                value={zoom}
+                onChange={(e) => updateAdjustments({ zoom: Number(e.target.value) })}
+                className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
+              />
+
+              <div className="flex items-center justify-between gap-1 pt-0.5">
+                {[1.0, 1.25, 1.5, 2.0, 2.5].map((z) => (
+                  <button
+                    key={z}
+                    type="button"
+                    onClick={() => updateAdjustments({ zoom: z, pan_x: z === 1.0 ? 0 : panX, pan_y: z === 1.0 ? 0 : panY })}
+                    className={`flex-1 py-1 rounded text-[10px] font-mono border transition-colors ${
+                      Math.abs(zoom - z) < 0.04
+                        ? 'bg-[#3B82F6] text-white border-[#3B82F6]'
+                        : 'bg-[#1a1a1e] text-zinc-400 border-[#262626] hover:text-white'
+                    }`}
+                  >
+                    {z === 1.0 ? '1.0x (Fit)' : `${z}x`}
+                  </button>
+                ))}
+              </div>
+
+              {zoom > 1.05 && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex justify-between text-[10px] text-zinc-400 font-mono">
+                    <span className="flex items-center gap-1"><Move className="h-3 w-3 text-cyan-400" /> Pan X / Y</span>
+                    <span>X: {panX}% • Y: {panY}%</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="range"
+                      min="-50"
+                      max="50"
+                      value={panX}
+                      onChange={(e) => updateAdjustments({ pan_x: Number(e.target.value) })}
+                      className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                      title="Pan Horizontal"
+                    />
+                    <input
+                      type="range"
+                      min="-50"
+                      max="50"
+                      value={panY}
+                      onChange={(e) => updateAdjustments({ pan_y: Number(e.target.value) })}
+                      className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                      title="Tilt Vertical"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 3. Picture & Color Tuning */}
+            <div className="space-y-2 pt-1 border-t border-[#262626]">
+              <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
+                Color & Lighting
+              </span>
+
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-[11px] text-zinc-400">
+                  <span className="flex items-center gap-1.5"><Sun className="h-3.5 w-3.5 text-amber-400" /> Brightness</span>
+                  <span className="font-mono text-white">{brightness}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={brightness}
+                  onChange={(e) => updateAdjustments({ brightness: Number(e.target.value) })}
+                  className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-[11px] text-zinc-400">
+                  <span className="flex items-center gap-1.5"><Contrast className="h-3.5 w-3.5 text-purple-400" /> Contrast</span>
+                  <span className="font-mono text-white">{contrast}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={contrast}
+                  onChange={(e) => updateAdjustments({ contrast: Number(e.target.value) })}
+                  className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-[11px] text-zinc-400">
+                  <span className="flex items-center gap-1.5"><Eye className="h-3.5 w-3.5 text-emerald-400" /> Saturation</span>
+                  <span className="font-mono text-white">{saturation}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={saturation}
+                  onChange={(e) => updateAdjustments({ saturation: Number(e.target.value) })}
+                  className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
