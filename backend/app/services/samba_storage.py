@@ -52,47 +52,72 @@ class SambaStorageService:
 
     def test_connection(self, config_to_test: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         cfg = dict(config_to_test or self.config)
-        
-        # Test Case 1: Local mount directory (e.g. /mnt/samba/cctv)
         mount_path = (cfg.get("local_mount_path") or "").strip()
         host = (cfg.get("host") or "").strip()
         share = (cfg.get("share") or "").strip()
-
-        if mount_path and not host:
-            p = Path(mount_path)
-            if p.exists() and os.access(str(p), os.W_OK):
-                return {"success": True, "message": f"Verified write access to local mount '{mount_path}'!"}
-            elif p.exists():
-                return {"success": False, "error": f"Path '{mount_path}' exists but is not writable."}
-            else:
-                return {"success": False, "error": f"Mount path '{mount_path}' does not exist on host."}
-
-        # Test Case 2: Direct SMB protocol connection
         user = (cfg.get("username") or "").strip() or None
         password = cfg.get("password")
         if password in ["••••••••", "••••"]:
             password = self.config.get("password")
 
-        if not host or not share:
-            if mount_path:
-                p = Path(mount_path)
-                if p.exists() and os.access(str(p), os.W_OK):
-                    return {"success": True, "message": f"Verified write access to mount '{mount_path}'!"}
-            return {"success": False, "error": "Please provide Host/IP, Share Name, and Login credentials."}
+        # Normalize Windows UNC paths (e.g. \\samba\Share or \\192.168.1.100\share)
+        if mount_path.startswith("\\\\") or mount_path.startswith("//") or mount_path.startswith("smb://"):
+            cleaned = mount_path.replace("smb://", "").replace("/", "\\").lstrip("\\")
+            parts = [p for p in cleaned.split("\\") if p]
+            if len(parts) >= 2:
+                if not host:
+                    host = parts[0]
+                if not share:
+                    share = parts[1]
+            mount_path = ""
 
-        try:
-            import smbclient
-            # Clear previous session cache
+        # Case 1: Direct Network SMB protocol connection (Host IP + Share Name)
+        if host and share:
             try:
-                smbclient.reset_connection_cache()
-            except Exception:
-                pass
-            smbclient.register_session(host, username=user, password=password)
-            unc_path = f"\\\\{host}\\{share}"
-            smbclient.listdir(unc_path)
-            return {"success": True, "message": f"Successfully authenticated to SMB Share '{unc_path}'!"}
-        except Exception as e:
-            return {"success": False, "error": f"SMB Login Error: {str(e)}"}
+                import smbclient
+                try:
+                    smbclient.reset_connection_cache()
+                except Exception:
+                    pass
+                smbclient.register_session(host, username=user, password=password, timeout=10)
+                unc_path = f"\\\\{host}\\{share}"
+                smbclient.listdir(unc_path)
+                return {
+                    "success": True,
+                    "message": f"Successfully connected to network SMB share '{unc_path}'!"
+                }
+            except Exception as e:
+                err_msg = str(e)
+                if "ConnectionRefusedError" in err_msg or "timed out" in err_msg.lower():
+                    return {"success": False, "error": f"Could not reach Samba host {host}:445 (Check IP or firewall)."}
+                elif "STATUS_LOGON_FAILURE" in err_msg or "Logon failure" in err_msg:
+                    return {"success": False, "error": "Invalid Samba username or password."}
+                elif "STATUS_BAD_NETWORK_NAME" in err_msg or "No such file" in err_msg:
+                    return {"success": False, "error": f"Share '{share}' not found on server {host}."}
+                return {"success": False, "error": f"SMB Connection Error: {err_msg}"}
+
+        # Case 2: Local Linux CIFS / Mount directory (e.g. /mnt/nas or /media/share)
+        if mount_path:
+            try:
+                p = Path(mount_path)
+                if not p.exists():
+                    try:
+                        p.mkdir(parents=True, exist_ok=True)
+                    except Exception:
+                        pass
+                if p.exists() and os.access(str(p), os.W_OK):
+                    return {"success": True, "message": f"Verified write access to local directory '{mount_path}'!"}
+                elif p.exists():
+                    return {"success": False, "error": f"Path '{mount_path}' exists but is not writable."}
+                else:
+                    return {"success": False, "error": f"Directory '{mount_path}' does not exist on host."}
+            except Exception as e:
+                return {"success": False, "error": f"Local path error: {e}"}
+
+        return {
+            "success": False,
+            "error": "Please enter Host / Server IP (e.g. 192.168.1.100) and Share Name (e.g. share)."
+        }
 
     def sync_file(self, file_path: Path) -> Dict[str, Any]:
         if not self.config.get("enabled"):
@@ -101,25 +126,28 @@ class SambaStorageService:
         if not file_path.exists():
             return {"success": False, "error": "Local file not found"}
 
-        # Option A: Local / CIFS mount copy
-        mount_path = self.config.get("local_mount_path")
-        if mount_path:
-            dest_dir = Path(mount_path)
-            if dest_dir.exists():
-                dest_file = dest_dir / file_path.name
-                shutil.copy2(str(file_path), str(dest_file))
-                return {"success": True, "destination": str(dest_file)}
-
-        # Option B: Direct smbclient transfer
-        host = self.config.get("host")
-        share = self.config.get("share")
-        user = self.config.get("username")
+        host = (self.config.get("host") or "").strip()
+        share = (self.config.get("share") or "").strip()
+        user = (self.config.get("username") or "").strip() or None
         password = self.config.get("password")
+        mount_path = (self.config.get("local_mount_path") or "").strip()
 
+        # Normalize UNC paths
+        if mount_path.startswith("\\\\") or mount_path.startswith("//") or mount_path.startswith("smb://"):
+            cleaned = mount_path.replace("smb://", "").replace("/", "\\").lstrip("\\")
+            parts = [p for p in cleaned.split("\\") if p]
+            if len(parts) >= 2:
+                if not host:
+                    host = parts[0]
+                if not share:
+                    share = parts[1]
+            mount_path = ""
+
+        # Option A: Direct SMB network transfer via smbclient
         if host and share:
             try:
                 import smbclient
-                smbclient.register_session(host, username=user, password=password)
+                smbclient.register_session(host, username=user, password=password, timeout=20)
                 unc_dest = f"\\\\{host}\\{share}\\{file_path.name}"
                 with open(file_path, "rb") as local_f:
                     with smbclient.open_file(unc_dest, mode="wb") as smb_f:
@@ -127,8 +155,20 @@ class SambaStorageService:
                 return {"success": True, "destination": unc_dest}
             except Exception as e:
                 logger.error(f"Samba file sync failed for {file_path.name}: {e}")
-                return {"success": False, "error": str(e)}
+                if not mount_path:
+                    return {"success": False, "error": str(e)}
 
-        return {"success": False, "error": "No valid Samba mount or host configured"}
+        # Option B: Local CIFS mount copy
+        if mount_path:
+            try:
+                dest_dir = Path(mount_path)
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                dest_file = dest_dir / file_path.name
+                shutil.copy2(str(file_path), str(dest_file))
+                return {"success": True, "destination": str(dest_file)}
+            except Exception as e:
+                return {"success": False, "error": f"Local mount sync failed: {e}"}
+
+        return {"success": False, "error": "No valid Samba host/share or mount path configured"}
 
 samba_storage = SambaStorageService()

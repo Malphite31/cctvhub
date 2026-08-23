@@ -399,12 +399,15 @@ export const StorageView: React.FC<StorageViewProps> = ({
 
             {/* Local Mount Path & Auto Sync */}
             <div>
-              <label className="block text-[10px] text-zinc-400 mb-0.5">Local Linux / Host Mount Path (Optional)</label>
+              <div className="flex justify-between items-center mb-0.5">
+                <label className="text-[10px] text-zinc-400">Local Mount Path (Optional)</label>
+                <span className="text-[9px] text-zinc-500 font-mono">Leave blank for direct network IP sync</span>
+              </div>
               <input
                 type="text"
                 value={sambaConfig.local_mount_path}
                 onChange={(e) => setSambaConfig({ ...sambaConfig, local_mount_path: e.target.value })}
-                placeholder="/mnt/samba/cctv (Leave blank if connecting via IP)"
+                placeholder="Leave blank, or e.g. /mnt/samba"
                 className="w-full bg-[#161616] border border-[#222222] rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:outline-none focus:border-[#3B82F6]"
               />
             </div>
