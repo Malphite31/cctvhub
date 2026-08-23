@@ -298,13 +298,27 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     return () => clearInterval(interval);
   }, [activeDevice, isPlaying]);
 
-  // Listen for fullscreen changes
+  // Listen for fullscreen changes (with vendor prefixes for iOS Safari and Android Chrome)
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const isFull = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+      setIsFullscreen(isFull);
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -332,14 +346,38 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
   const handleToggleFullscreen = () => {
     const el = playerContainerRef.current;
-    if (!el) return;
-    if (!document.fullscreenElement) {
-      if (el.requestFullscreen) {
-        el.requestFullscreen().catch(() => {});
-      }
-    } else {
+    const isDocFull = !!(
+      document.fullscreenElement ||
+      (document as any).webkitFullscreenElement ||
+      (document as any).mozFullScreenElement ||
+      (document as any).msFullscreenElement
+    );
+
+    if (isFullscreen || isDocFull) {
       if (document.exitFullscreen) {
         document.exitFullscreen().catch(() => {});
+      } else if ((document as any).webkitExitFullscreen) {
+        (document as any).webkitExitFullscreen();
+      } else if ((document as any).mozCancelFullScreen) {
+        (document as any).mozCancelFullScreen();
+      } else if ((document as any).msExitFullscreen) {
+        (document as any).msExitFullscreen();
+      }
+      setIsFullscreen(false);
+    } else {
+      setIsFullscreen(true);
+      if (el) {
+        if (el.requestFullscreen) {
+          el.requestFullscreen().catch(() => {
+            // CSS fallback is active with isFullscreen = true
+          });
+        } else if ((el as any).webkitRequestFullscreen) {
+          (el as any).webkitRequestFullscreen();
+        } else if ((el as any).mozRequestFullScreen) {
+          (el as any).mozRequestFullScreen();
+        } else if ((el as any).msRequestFullscreen) {
+          (el as any).msRequestFullscreen();
+        }
       }
     }
   };
@@ -440,6 +478,417 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     device: activeDevice || '0',
     name: 'No Camera Selected'
   });
+
+  const renderControlsDock = (isFloating = false) => {
+    return (
+      <div
+        className={
+          isFloating
+            ? "absolute bottom-3 left-3 right-3 flex items-center justify-between gap-1.5 sm:gap-2 z-50 pointer-events-none select-none"
+            : "w-full flex items-center justify-between gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-xl bg-[#111114] border border-[#222226] shadow-lg overflow-x-auto no-scrollbar shrink-0 select-none"
+        }
+      >
+        {/* Left Action Buttons Dock */}
+        <div className={`flex items-center gap-1.5 sm:gap-2 shrink-0 ${isFloating ? 'pointer-events-auto' : ''}`}>
+          {/* Pause / Play */}
+          <button
+            onClick={handleTogglePlay}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs font-medium border transition-colors shrink-0 ${
+              isFloating ? 'bg-black/85 hover:bg-black border-[#333333] backdrop-blur' : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
+            }`}
+            title={isPlaying ? 'Pause Feed' : 'Play Feed'}
+          >
+            {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            <span className="inline">{isPlaying ? 'Pause' : 'Play'}</span>
+          </button>
+
+          {/* Quick Snapshot */}
+          <button
+            onClick={onSnapshot}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs font-medium border transition-colors shrink-0 ${
+              isFloating ? 'bg-black/85 hover:bg-black border-[#333333] backdrop-blur' : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
+            }`}
+            title="Capture Snapshot"
+          >
+            <Camera className="h-3.5 w-3.5 text-[#3B82F6]" />
+            <span className="inline">Snapshot</span>
+          </button>
+
+          {/* Video Record */}
+          <button
+            onClick={onToggleRecording}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
+              isRecording
+                ? 'bg-rose-600 text-white border-rose-500 animate-pulse'
+                : isFloating
+                ? 'bg-black/85 hover:bg-black text-white border-[#333333] backdrop-blur'
+                : 'bg-[#18181c] hover:bg-[#222226] text-white border-[#2c2c32]'
+            }`}
+            title={isRecording ? 'Stop Recording' : 'Start Recording'}
+          >
+            <Disc className={`h-3.5 w-3.5 ${isRecording ? 'text-white' : 'text-rose-400'}`} />
+            {isRecording ? (
+              <span className="font-mono text-xs">{recordingElapsed}s</span>
+            ) : (
+              <span className="inline">Record</span>
+            )}
+          </button>
+
+          {/* Select Object / Door to Track button */}
+          <button
+            onClick={() => setIsDrawingMode(!isDrawingMode)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
+              isDrawingMode
+                ? 'bg-[#3B82F6] text-white border-[#3B82F6] animate-pulse'
+                : isFloating
+                ? 'bg-black/85 hover:bg-black text-zinc-300 border-[#333333] backdrop-blur'
+                : 'bg-[#18181c] hover:bg-[#222226] text-zinc-300 border-[#2c2c32]'
+            }`}
+            title="Select / Draw Object or Door to Track"
+          >
+            <Plus className="h-3.5 w-3.5 text-[#3B82F6]" />
+            <span className="inline">{isDrawingMode ? 'Cancel' : 'Select'}</span>
+          </button>
+
+          {/* HUD Visibility Toggle */}
+          <button
+            onClick={() => handleUpdateTrackerSettings({ enabled: !trackerSettings.enabled })}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
+              trackerSettings.enabled
+                ? 'bg-blue-600/20 text-[#3B82F6] border-[#3B82F6]/50 hover:bg-blue-600/30'
+                : isFloating
+                ? 'bg-black/85 hover:bg-black text-zinc-400 border-[#333333] backdrop-blur'
+                : 'bg-[#18181c] hover:bg-[#222226] text-zinc-400 border-[#2c2c32]'
+            }`}
+            title={trackerSettings.enabled ? 'Hide Tracker HUD Overlay' : 'Show Tracker HUD Overlay'}
+          >
+            {trackerSettings.enabled ? <Eye className="h-3.5 w-3.5 text-[#3B82F6]" /> : <EyeOff className="h-3.5 w-3.5 text-zinc-400" />}
+            <span className="inline">{trackerSettings.enabled ? 'HUD On' : 'HUD Off'}</span>
+          </button>
+
+          {/* Motion Detector Button & Settings */}
+          <button
+            onClick={() => setIsMotionModalOpen(true)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
+              isMotionDetected
+                ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 hover:bg-amber-500/30'
+                : isFloating
+                ? 'bg-black/85 hover:bg-black text-zinc-300 border-[#333333] backdrop-blur'
+                : 'bg-[#18181c] hover:bg-[#222226] text-zinc-300 border-[#2c2c32]'
+            }`}
+            title="Motion Detector & Trigger Actions"
+          >
+            <Activity className={`h-3.5 w-3.5 ${isMotionDetected ? 'text-amber-400 animate-pulse' : 'text-zinc-400'}`} />
+            <span className="inline font-mono">Motion</span>
+            {isMotionDetected && (
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
+            )}
+          </button>
+
+          {/* Mute / Audio with Volume Slider */}
+          <div className="relative shrink-0" ref={micMenuRef}>
+            <div className={`flex items-center rounded-lg border overflow-hidden ${
+              isFloating ? 'bg-black/85 border-[#333333] backdrop-blur' : 'bg-[#18181c] border-[#2c2c32]'
+            }`}>
+              <button
+                onClick={onToggleMute}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 text-xs font-medium text-white hover:bg-white/10 transition-colors"
+                title={!isMuted ? 'Mute Microphone' : 'Enable Live Audio'}
+              >
+                {!isMuted ? <Volume2 className="h-3.5 w-3.5 text-emerald-400" /> : <VolumeX className="h-3.5 w-3.5 text-zinc-400" />}
+                <span className="inline">{!isMuted ? 'Audio' : 'Muted'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowMicMenu(!showMicMenu)}
+                className="p-1.5 sm:px-2 sm:py-1.5 border-l border-[#333333] hover:bg-white/10 text-zinc-400 hover:text-white"
+                title="Audio Device & Volume"
+              >
+                <ChevronDown className="h-3 w-3" />
+              </button>
+            </div>
+
+            {/* Mic Volume Popup */}
+            {showMicMenu && (
+              <div className="absolute bottom-full mb-2 left-0 sm:left-auto sm:right-0 w-60 sm:w-64 max-w-[calc(100vw-32px)] rounded-xl border border-[#262626] bg-[#141417]/95 backdrop-blur-md p-3 shadow-2xl space-y-2.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                <div className="flex justify-between items-center text-[11px] font-semibold text-white border-b border-[#222222] pb-1.5">
+                  <span className="flex items-center gap-1.5"><Mic className="h-3.5 w-3.5 text-emerald-400" /> Microphone</span>
+                  <span className="font-mono text-[10px] text-zinc-400">{volume}%</span>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] text-zinc-400">
+                    <span>Volume</span>
+                    <span>{volume}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={volume}
+                    onChange={(e) => onChangeVolume(Number(e.target.value))}
+                    className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] text-zinc-400">
+                    <span>Level</span>
+                    <span className="font-mono text-emerald-400">{audioLevel}%</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-[#222222] rounded-full overflow-hidden flex">
+                    <div
+                      className={`h-full transition-all duration-75 ${
+                        audioLevel > 75 ? 'bg-rose-500' : audioLevel > 40 ? 'bg-amber-400' : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(audioLevel > 0 ? 8 : 0, audioLevel))}%` }}
+                    />
+                  </div>
+                </div>
+
+                {audioDevices.length > 0 && (
+                  <div className="pt-1 border-t border-[#222222]">
+                    <span className="text-[9px] text-zinc-400 block mb-0.5">Input Device:</span>
+                    <select
+                      value={activeAudioDevice !== null ? activeAudioDevice : ''}
+                      onChange={(e) => onSelectAudioDevice(Number(e.target.value))}
+                      className="w-full bg-[#1a1a1a] border border-[#262626] rounded p-1 text-zinc-200 text-[10px] outline-none"
+                    >
+                      {audioDevices.map((d: any) => (
+                        <option key={d.index} value={d.index}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Action Buttons: Adjustments & Fullscreen */}
+        <div className={`flex items-center gap-1.5 sm:gap-2 shrink-0 ${isFloating ? 'pointer-events-auto' : ''}`}>
+          {/* Tune Camera Adjustments Popover */}
+          <div className="relative" ref={adjustmentsRef}>
+            <button
+              onClick={() => setShowAdjustmentsModal(!showAdjustmentsModal)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs font-medium border transition-colors ${
+                showAdjustmentsModal || flipH || flipV || rotation !== 0 || zoom > 1.01 || brightness !== 50 || contrast !== 50 || saturation !== 50
+                  ? 'bg-[#3B82F6] border-[#3B82F6]'
+                  : isFloating
+                  ? 'bg-black/85 hover:bg-black border-[#333333] backdrop-blur'
+                  : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
+              }`}
+              title="Camera Adjustments (Flip, Crop, Zoom, Rotate, Color)"
+            >
+              <Sliders className="h-3.5 w-3.5" />
+              <span className="inline font-mono">Tune</span>
+              {(flipH || flipV || rotation !== 0 || zoom > 1.01) && (
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+              )}
+            </button>
+
+            {showAdjustmentsModal && (
+              <div className="absolute bottom-full mb-2 right-0 w-72 sm:w-80 max-w-[calc(100vw-36px)] rounded-xl border border-[#262626] bg-[#141417]/95 backdrop-blur-md p-3.5 shadow-2xl z-50 space-y-3 font-sans text-xs animate-in fade-in zoom-in-95 duration-100">
+                {/* Header */}
+                <div className="flex justify-between items-center border-b border-[#262626] pb-2">
+                  <div className="flex items-center gap-1.5">
+                    <Sliders className="h-3.5 w-3.5 text-[#3B82F6]" />
+                    <span className="font-semibold text-white">Camera Adjustments</span>
+                  </div>
+                  <button
+                    onClick={handleResetAdjustments}
+                    className="text-[10px] font-mono text-zinc-400 hover:text-amber-400 flex items-center gap-1 transition-colors"
+                    title="Reset all adjustments to normal defaults"
+                  >
+                    <RotateCcw className="h-2.5 w-2.5" />
+                    <span>Reset</span>
+                  </button>
+                </div>
+
+                {/* 1. Orientation & Flip */}
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
+                    Orientation & Flip
+                  </span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {/* Flip H */}
+                    <button
+                      type="button"
+                      onClick={() => updateAdjustments({ flip_h: !flipH })}
+                      className={`p-1.5 rounded-lg border text-center flex flex-col items-center gap-1 transition-colors ${
+                        flipH ? 'border-[#3B82F6] bg-[#3B82F6]/20 text-white' : 'border-[#262626] bg-[#1a1a1e] text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <FlipHorizontal className="h-3.5 w-3.5 text-[#3B82F6]" />
+                      <span className="text-[9px] font-mono">Flip H</span>
+                    </button>
+
+                    {/* Flip V */}
+                    <button
+                      type="button"
+                      onClick={() => updateAdjustments({ flip_v: !flipV })}
+                      className={`p-1.5 rounded-lg border text-center flex flex-col items-center gap-1 transition-colors ${
+                        flipV ? 'border-[#3B82F6] bg-[#3B82F6]/20 text-white' : 'border-[#262626] bg-[#1a1a1e] text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <FlipVertical className="h-3.5 w-3.5 text-[#3B82F6]" />
+                      <span className="text-[9px] font-mono">Flip V</span>
+                    </button>
+
+                    {/* Rotate 90 */}
+                    <button
+                      type="button"
+                      onClick={() => updateAdjustments({ rotation: (rotation + 90) % 360 })}
+                      className={`p-1.5 rounded-lg border text-center flex flex-col items-center gap-1 transition-colors ${
+                        rotation !== 0 ? 'border-[#3B82F6] bg-[#3B82F6]/20 text-white' : 'border-[#262626] bg-[#1a1a1e] text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <RotateCw className="h-3.5 w-3.5 text-emerald-400" />
+                      <span className="text-[9px] font-mono">{rotation}°</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Digital Zoom & Crop */}
+                <div className="space-y-1.5 pt-1 border-t border-[#262626]">
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="font-mono text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+                      <ZoomIn className="h-3 w-3 text-[#3B82F6]" /> Digital Zoom / Crop
+                    </span>
+                    <span className="font-mono text-white font-semibold">{zoom.toFixed(2)}x</span>
+                  </div>
+
+                  <input
+                    type="range"
+                    min="1.0"
+                    max="3.0"
+                    step="0.05"
+                    value={zoom}
+                    onChange={(e) => updateAdjustments({ zoom: Number(e.target.value) })}
+                    className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
+                  />
+
+                  {/* Quick Zoom Presets */}
+                  <div className="flex items-center justify-between gap-1 pt-0.5">
+                    {[1.0, 1.25, 1.5, 2.0, 2.5].map((z) => (
+                      <button
+                        key={z}
+                        type="button"
+                        onClick={() => updateAdjustments({ zoom: z, pan_x: z === 1.0 ? 0 : panX, pan_y: z === 1.0 ? 0 : panY })}
+                        className={`flex-1 py-0.5 rounded text-[9px] font-mono border transition-colors ${
+                          Math.abs(zoom - z) < 0.04
+                            ? 'bg-[#3B82F6] text-white border-[#3B82F6]'
+                            : 'bg-[#1a1a1e] text-zinc-400 border-[#262626] hover:text-white'
+                        }`}
+                      >
+                        {z === 1.0 ? '1.0x (Fit)' : `${z}x`}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Pan Sliders when Zoomed */}
+                  {zoom > 1.05 && (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex justify-between text-[9px] text-zinc-400 font-mono">
+                        <span className="flex items-center gap-1"><Move className="h-2.5 w-2.5 text-cyan-400" /> Pan X / Y</span>
+                        <span>X: {panX}% • Y: {panY}%</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <input
+                          type="range"
+                          min="-50"
+                          max="50"
+                          value={panX}
+                          onChange={(e) => updateAdjustments({ pan_x: Number(e.target.value) })}
+                          className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                          title="Pan Horizontal"
+                        />
+                        <input
+                          type="range"
+                          min="-50"
+                          max="50"
+                          value={panY}
+                          onChange={(e) => updateAdjustments({ pan_y: Number(e.target.value) })}
+                          className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                          title="Tilt Vertical"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Picture & Color Tuning */}
+                <div className="space-y-2 pt-1 border-t border-[#262626]">
+                  <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
+                    Color & Lighting
+                  </span>
+
+                  {/* Brightness */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-zinc-400">
+                      <span className="flex items-center gap-1.5"><Sun className="h-3 w-3 text-amber-400" /> Brightness</span>
+                      <span className="font-mono text-white">{brightness}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={brightness}
+                      onChange={(e) => updateAdjustments({ brightness: Number(e.target.value) })}
+                      className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
+                    />
+                  </div>
+
+                  {/* Contrast */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-zinc-400">
+                      <span className="flex items-center gap-1.5"><Contrast className="h-3 w-3 text-purple-400" /> Contrast</span>
+                      <span className="font-mono text-white">{contrast}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={contrast}
+                      onChange={(e) => updateAdjustments({ contrast: Number(e.target.value) })}
+                      className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
+                    />
+                  </div>
+
+                  {/* Saturation */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-zinc-400">
+                      <span className="flex items-center gap-1.5"><Eye className="h-3 w-3 text-emerald-400" /> Saturation</span>
+                      <span className="font-mono text-white">{saturation}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={saturation}
+                      onChange={(e) => updateAdjustments({ saturation: Number(e.target.value) })}
+                      className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={handleToggleFullscreen}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white text-xs font-medium border transition-colors shrink-0 ${
+              isFloating ? 'bg-black/85 hover:bg-black border-[#333333] backdrop-blur' : 'bg-[#18181c] hover:bg-[#222226] border-[#2c2c32]'
+            }`}
+            title="Toggle Video Fullscreen"
+          >
+            {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            <span className="inline font-mono">{isFullscreen ? 'Exit' : 'Full'}</span>
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="rounded-xl border border-[#222222] bg-[#121212] p-2.5 sm:p-4 flex flex-col justify-between gap-2.5 sm:gap-3 select-none overflow-hidden text-xs h-full">
@@ -775,392 +1224,26 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
               </div>
             )}
 
-            {/* 3. Bottom Player Controls Dock */}
-            <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1 sm:gap-2 z-30 pointer-events-none">
-              {/* Left Action Buttons Dock */}
-              <div className="flex items-center gap-1 sm:gap-1.5 pointer-events-auto shrink-0">
-                {/* Pause / Play */}
-                <button
-                  onClick={handleTogglePlay}
-                  className="flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-md bg-black/85 hover:bg-black text-white text-[11px] font-medium border border-[#333333] backdrop-blur transition-colors shrink-0"
-                  title={isPlaying ? 'Pause Feed' : 'Play Feed'}
-                >
-                  {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                  <span className="hidden sm:inline">{isPlaying ? 'Pause' : 'Play'}</span>
-                </button>
+            {/* In Fullscreen Mode: Controls float at the bottom of the video */}
+            {isFullscreen && renderControlsDock(true)}
 
-                {/* Quick Snapshot */}
-                <button
-                  onClick={onSnapshot}
-                  className="flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-md bg-black/85 hover:bg-black text-white text-[11px] font-medium border border-[#333333] backdrop-blur transition-colors shrink-0"
-                  title="Capture Snapshot"
-                >
-                  <Camera className="h-3.5 w-3.5 text-[#3B82F6]" />
-                  <span className="hidden sm:inline">Snapshot</span>
-                </button>
-
-                {/* Video Record */}
-                <button
-                  onClick={onToggleRecording}
-                  className={`flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-md text-[11px] font-medium border backdrop-blur transition-colors shrink-0 ${
-                    isRecording
-                      ? 'bg-rose-600 text-white border-rose-500 animate-pulse'
-                      : 'bg-black/85 hover:bg-black text-white border-[#333333]'
-                  }`}
-                  title={isRecording ? 'Stop Recording' : 'Start Recording'}
-                >
-                  <Disc className={`h-3.5 w-3.5 ${isRecording ? 'text-white' : 'text-rose-400'}`} />
-                  {isRecording ? (
-                    <span className="font-mono">{recordingElapsed}s</span>
-                  ) : (
-                    <span className="hidden sm:inline">Record</span>
-                  )}
-                </button>
-
-                {/* Select Object / Door to Track button */}
-                <button
-                  onClick={() => setIsDrawingMode(!isDrawingMode)}
-                  className={`flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-md text-[11px] font-medium border backdrop-blur transition-colors shrink-0 ${
-                    isDrawingMode
-                      ? 'bg-[#3B82F6] text-white border-[#3B82F6] animate-pulse'
-                      : 'bg-black/85 hover:bg-black text-zinc-300 border-[#333333]'
-                  }`}
-                  title="Select / Draw Object or Door to Track"
-                >
-                  <Plus className="h-3.5 w-3.5 text-[#3B82F6]" />
-                  <span className="hidden sm:inline">{isDrawingMode ? 'Cancel' : 'Select'}</span>
-                </button>
-
-                {/* HUD Visibility Toggle (Show / Hide Overlay) */}
-                <button
-                  onClick={() => handleUpdateTrackerSettings({ enabled: !trackerSettings.enabled })}
-                  className={`flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-md text-[11px] font-medium border backdrop-blur transition-colors shrink-0 ${
-                    trackerSettings.enabled
-                      ? 'bg-blue-600/20 text-[#3B82F6] border-[#3B82F6]/50 hover:bg-blue-600/30'
-                      : 'bg-black/85 hover:bg-black text-zinc-400 border-[#333333]'
-                  }`}
-                  title={trackerSettings.enabled ? 'Hide Tracker HUD Overlay' : 'Show Tracker HUD Overlay'}
-                >
-                  {trackerSettings.enabled ? <Eye className="h-3.5 w-3.5 text-[#3B82F6]" /> : <EyeOff className="h-3.5 w-3.5 text-zinc-400" />}
-                  <span className="hidden md:inline">{trackerSettings.enabled ? 'HUD On' : 'HUD Off'}</span>
-                </button>
-
-                {/* Motion Detector Button & Settings */}
-                <button
-                  onClick={() => setIsMotionModalOpen(true)}
-                  className={`flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-md text-[11px] font-medium border backdrop-blur transition-colors shrink-0 ${
-                    isMotionDetected
-                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 hover:bg-amber-500/30'
-                      : 'bg-black/85 hover:bg-black text-zinc-300 border-[#333333]'
-                  }`}
-                  title="Motion Detector & Trigger Actions (Snapshot / Video Recording)"
-                >
-                  <Activity className={`h-3.5 w-3.5 ${isMotionDetected ? 'text-amber-400 animate-pulse' : 'text-zinc-400'}`} />
-                  <span className="hidden md:inline font-mono">Motion</span>
-                  {isMotionDetected && (
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
-                  )}
-                </button>
-
-                {/* Mute / Audio with Volume Slider */}
-                <div className="relative shrink-0" ref={micMenuRef}>
-                  <div className="flex items-center rounded-md bg-black/85 border border-[#333333] overflow-hidden backdrop-blur">
-                    <button
-                      onClick={onToggleMute}
-                      className="flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-2.5 sm:py-1 text-[11px] font-medium text-white hover:bg-white/10 transition-colors"
-                      title={!isMuted ? 'Mute Microphone' : 'Enable Live Audio'}
-                    >
-                      {!isMuted ? <Volume2 className="h-3.5 w-3.5 text-emerald-400" /> : <VolumeX className="h-3.5 w-3.5 text-zinc-400" />}
-                      <span className="hidden sm:inline">{!isMuted ? 'Audio' : 'Muted'}</span>
-                    </button>
-
-                    <button
-                      onClick={() => setShowMicMenu(!showMicMenu)}
-                      className="p-1 sm:px-1.5 sm:py-1 border-l border-[#333333] hover:bg-white/10 text-zinc-400 hover:text-white"
-                      title="Audio Device & Volume"
-                    >
-                      <ChevronDown className="h-3 w-3" />
-                    </button>
-                  </div>
-
-                  {/* Mic Volume Popup */}
-                  {showMicMenu && (
-                    <div className="absolute bottom-full mb-2 left-0 sm:left-auto sm:right-0 w-60 sm:w-64 max-w-[calc(100vw-32px)] rounded-xl border border-[#262626] bg-[#141417]/95 backdrop-blur-md p-3 shadow-2xl space-y-2.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
-                      <div className="flex justify-between items-center text-[11px] font-semibold text-white border-b border-[#222222] pb-1.5">
-                        <span className="flex items-center gap-1.5"><Mic className="h-3.5 w-3.5 text-emerald-400" /> Microphone</span>
-                        <span className="font-mono text-[10px] text-zinc-400">{volume}%</span>
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] text-zinc-400">
-                          <span>Volume</span>
-                          <span>{volume}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={volume}
-                          onChange={(e) => onChangeVolume(Number(e.target.value))}
-                          className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] text-zinc-400">
-                          <span>Level</span>
-                          <span className="font-mono text-emerald-400">{audioLevel}%</span>
-                        </div>
-                        <div className="h-1.5 w-full bg-[#222222] rounded-full overflow-hidden flex">
-                          <div
-                            className={`h-full transition-all duration-75 ${
-                              audioLevel > 75 ? 'bg-rose-500' : audioLevel > 40 ? 'bg-amber-400' : 'bg-emerald-500'
-                            }`}
-                            style={{ width: `${Math.min(100, Math.max(audioLevel > 0 ? 8 : 0, audioLevel))}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      {audioDevices.length > 0 && (
-                        <div className="pt-1 border-t border-[#222222]">
-                          <span className="text-[9px] text-zinc-400 block mb-0.5">Input Device:</span>
-                          <select
-                            value={activeAudioDevice !== null ? activeAudioDevice : ''}
-                            onChange={(e) => onSelectAudioDevice(Number(e.target.value))}
-                            className="w-full bg-[#1a1a1a] border border-[#262626] rounded p-1 text-zinc-200 text-[10px] outline-none"
-                          >
-                            {audioDevices.map((d: any) => (
-                              <option key={d.index} value={d.index}>{d.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Bottom-Right Controls: Adjustments & Fullscreen */}
-              <div className="pointer-events-auto shrink-0 flex items-center gap-1 sm:gap-1.5">
-                {/* Tune Camera Adjustments Popover */}
-                <div className="relative" ref={adjustmentsRef}>
-                  <button
-                    onClick={() => setShowAdjustmentsModal(!showAdjustmentsModal)}
-                    className={`flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1 rounded-md text-white text-[11px] font-medium border backdrop-blur transition-colors ${
-                      showAdjustmentsModal || flipH || flipV || rotation !== 0 || zoom > 1.01 || brightness !== 50 || contrast !== 50 || saturation !== 50
-                        ? 'bg-[#3B82F6] border-[#3B82F6]'
-                        : 'bg-black/85 hover:bg-black border-[#333333]'
-                    }`}
-                    title="Camera Adjustments (Flip, Crop, Zoom, Rotate, Color)"
-                  >
-                    <Sliders className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline font-mono">Tune</span>
-                    {(flipH || flipV || rotation !== 0 || zoom > 1.01) && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-                    )}
-                  </button>
-
-                  {showAdjustmentsModal && (
-                    <div className="absolute bottom-full mb-2 right-0 w-72 sm:w-80 max-w-[calc(100vw-36px)] rounded-xl border border-[#262626] bg-[#141417]/95 backdrop-blur-md p-3.5 shadow-2xl z-50 space-y-3 font-sans text-xs animate-in fade-in zoom-in-95 duration-100">
-                      {/* Header */}
-                      <div className="flex justify-between items-center border-b border-[#262626] pb-2">
-                        <div className="flex items-center gap-1.5">
-                          <Sliders className="h-3.5 w-3.5 text-[#3B82F6]" />
-                          <span className="font-semibold text-white">Camera Adjustments</span>
-                        </div>
-                        <button
-                          onClick={handleResetAdjustments}
-                          className="text-[10px] font-mono text-zinc-400 hover:text-amber-400 flex items-center gap-1 transition-colors"
-                          title="Reset all adjustments to normal defaults"
-                        >
-                          <RotateCcw className="h-2.5 w-2.5" />
-                          <span>Reset</span>
-                        </button>
-                      </div>
-
-                      {/* 1. Orientation & Flip */}
-                      <div className="space-y-1.5">
-                        <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
-                          Orientation & Flip
-                        </span>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {/* Flip H */}
-                          <button
-                            type="button"
-                            onClick={() => updateAdjustments({ flip_h: !flipH })}
-                            className={`p-1.5 rounded-lg border text-center flex flex-col items-center gap-1 transition-colors ${
-                              flipH ? 'border-[#3B82F6] bg-[#3B82F6]/20 text-white' : 'border-[#262626] bg-[#1a1a1e] text-zinc-400 hover:text-white'
-                            }`}
-                          >
-                            <FlipHorizontal className="h-3.5 w-3.5 text-[#3B82F6]" />
-                            <span className="text-[9px] font-mono">Flip H</span>
-                          </button>
-
-                          {/* Flip V */}
-                          <button
-                            type="button"
-                            onClick={() => updateAdjustments({ flip_v: !flipV })}
-                            className={`p-1.5 rounded-lg border text-center flex flex-col items-center gap-1 transition-colors ${
-                              flipV ? 'border-[#3B82F6] bg-[#3B82F6]/20 text-white' : 'border-[#262626] bg-[#1a1a1e] text-zinc-400 hover:text-white'
-                            }`}
-                          >
-                            <FlipVertical className="h-3.5 w-3.5 text-[#3B82F6]" />
-                            <span className="text-[9px] font-mono">Flip V</span>
-                          </button>
-
-                          {/* Rotate 90 */}
-                          <button
-                            type="button"
-                            onClick={() => updateAdjustments({ rotation: (rotation + 90) % 360 })}
-                            className={`p-1.5 rounded-lg border text-center flex flex-col items-center gap-1 transition-colors ${
-                              rotation !== 0 ? 'border-[#3B82F6] bg-[#3B82F6]/20 text-white' : 'border-[#262626] bg-[#1a1a1e] text-zinc-400 hover:text-white'
-                            }`}
-                          >
-                            <RotateCw className="h-3.5 w-3.5 text-emerald-400" />
-                            <span className="text-[9px] font-mono">{rotation}°</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* 2. Digital Zoom & Crop */}
-                      <div className="space-y-1.5 pt-1 border-t border-[#262626]">
-                        <div className="flex justify-between items-center text-[10px]">
-                          <span className="font-mono text-zinc-400 uppercase tracking-wider flex items-center gap-1">
-                            <ZoomIn className="h-3 w-3 text-[#3B82F6]" /> Digital Zoom / Crop
-                          </span>
-                          <span className="font-mono text-white font-semibold">{zoom.toFixed(2)}x</span>
-                        </div>
-
-                        <input
-                          type="range"
-                          min="1.0"
-                          max="3.0"
-                          step="0.05"
-                          value={zoom}
-                          onChange={(e) => updateAdjustments({ zoom: Number(e.target.value) })}
-                          className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
-                        />
-
-                        {/* Quick Zoom Presets */}
-                        <div className="flex items-center justify-between gap-1 pt-0.5">
-                          {[1.0, 1.25, 1.5, 2.0, 2.5].map((z) => (
-                            <button
-                              key={z}
-                              type="button"
-                              onClick={() => updateAdjustments({ zoom: z, pan_x: z === 1.0 ? 0 : panX, pan_y: z === 1.0 ? 0 : panY })}
-                              className={`flex-1 py-0.5 rounded text-[9px] font-mono border transition-colors ${
-                                Math.abs(zoom - z) < 0.04
-                                  ? 'bg-[#3B82F6] text-white border-[#3B82F6]'
-                                  : 'bg-[#1a1a1e] text-zinc-400 border-[#262626] hover:text-white'
-                              }`}
-                            >
-                              {z === 1.0 ? '1.0x (Fit)' : `${z}x`}
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Pan Sliders when Zoomed */}
-                        {zoom > 1.05 && (
-                          <div className="space-y-1.5 pt-1">
-                            <div className="flex justify-between text-[9px] text-zinc-400 font-mono">
-                              <span className="flex items-center gap-1"><Move className="h-2.5 w-2.5 text-cyan-400" /> Pan X / Y</span>
-                              <span>X: {panX}% • Y: {panY}%</span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-1.5">
-                              <input
-                                type="range"
-                                min="-50"
-                                max="50"
-                                value={panX}
-                                onChange={(e) => updateAdjustments({ pan_x: Number(e.target.value) })}
-                                className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                                title="Pan Horizontal"
-                              />
-                              <input
-                                type="range"
-                                min="-50"
-                                max="50"
-                                value={panY}
-                                onChange={(e) => updateAdjustments({ pan_y: Number(e.target.value) })}
-                                className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                                title="Tilt Vertical"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 3. Picture & Color Tuning */}
-                      <div className="space-y-2 pt-1 border-t border-[#262626]">
-                        <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
-                          Color & Lighting
-                        </span>
-
-                        {/* Brightness */}
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-[10px] text-zinc-400">
-                            <span className="flex items-center gap-1.5"><Sun className="h-3 w-3 text-amber-400" /> Brightness</span>
-                            <span className="font-mono text-white">{brightness}%</span>
-                          </div>
-                          <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            value={brightness}
-                            onChange={(e) => updateAdjustments({ brightness: Number(e.target.value) })}
-                            className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
-                          />
-                        </div>
-
-                        {/* Contrast */}
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-[10px] text-zinc-400">
-                            <span className="flex items-center gap-1.5"><Contrast className="h-3 w-3 text-purple-400" /> Contrast</span>
-                            <span className="font-mono text-white">{contrast}%</span>
-                          </div>
-                          <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            value={contrast}
-                            onChange={(e) => updateAdjustments({ contrast: Number(e.target.value) })}
-                            className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
-                          />
-                        </div>
-
-                        {/* Saturation */}
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-[10px] text-zinc-400">
-                            <span className="flex items-center gap-1.5"><Eye className="h-3 w-3 text-emerald-400" /> Saturation</span>
-                            <span className="font-mono text-white">{saturation}%</span>
-                          </div>
-                          <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            value={saturation}
-                            onChange={(e) => updateAdjustments({ saturation: Number(e.target.value) })}
-                            className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  onClick={handleToggleFullscreen}
-                  className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1 rounded-md bg-black/85 hover:bg-black text-white text-[11px] font-medium border border-[#333333] backdrop-blur transition-colors shrink-0"
-                  title="Toggle Video Fullscreen"
-                >
-                  {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-                  <span className="hidden sm:inline font-mono">{isFullscreen ? 'Exit' : 'Full'}</span>
-                </button>
-              </div>
-            </div>
+            {/* Floating Exit Button for Fullscreen Mode */}
+            {isFullscreen && (
+              <button
+                type="button"
+                onClick={handleToggleFullscreen}
+                className="fixed top-4 right-4 z-[10000] p-2.5 rounded-full bg-black/80 text-white border border-white/20 hover:bg-black transition-colors shadow-2xl backdrop-blur"
+                title="Exit Fullscreen"
+              >
+                <Minimize2 className="h-5 w-5 text-white" />
+              </button>
+            )}
           </>
         )}
       </div>
+
+      {/* 3. Action Controls Toolbar (Rendered OUTSIDE and below the video on Mobile and Desktop) */}
+      {!isFullscreen && hasCameras && renderControlsDock(false)}
 
       {/* Custom Object Tracker Configuration Modal */}
       <CustomObjectTrackerModal
