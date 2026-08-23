@@ -17,42 +17,55 @@ git fetch --all
 BRANCH=$(git rev-parse --abbrev-ref HEAD || echo "main")
 git pull origin "$BRANCH"
 
-# 3. If Docker is running, rebuild container
-if command -v docker &> /dev/null && docker compose version &> /dev/null && [ -f "docker-compose.yml" ]; then
+# 3. Check if running as native systemd service on Host / LXC
+IS_SYSTEMD=false
+if [ -f "/etc/systemd/system/cctv-hub.service" ] || [ -d ".venv" ]; then
+    IS_SYSTEMD=true
+fi
+
+if [ "$IS_SYSTEMD" = true ]; then
+    echo ">> Updating Native Host Installation..."
+    
+    # Update Python backend dependencies
+    echo ">> Upgrading Python backend dependencies..."
+    if [ -d ".venv" ]; then
+        .venv/bin/pip install -r backend/requirements.txt
+    else
+        pip3 install -r backend/requirements.txt
+    fi
+
+    # Compile React Frontend
+    echo ">> Compiling React Frontend..."
+    if command -v npm &> /dev/null && [ -d "frontend" ]; then
+        cd frontend
+        npm install
+        npm run build
+        cd ..
+    fi
+
+    # Restart systemd service
+    if [ -f "/etc/systemd/system/cctv-hub.service" ]; then
+        echo ">> Restarting systemd service 'cctv-hub'..."
+        sudo systemctl restart cctv-hub || systemctl restart cctv-hub
+        echo ">> Systemd service 'cctv-hub' restarted successfully!"
+    fi
+
+    echo "========================================="
+    echo "  Upgrade Successfully Finished!        "
+    echo "  Dashboard running at http://localhost:8000"
+    echo "========================================="
+    exit 0
+fi
+
+# 4. If running as Docker container
+if command -v docker &> /dev/null && [ -f "docker-compose.yml" ]; then
     echo ">> Updating Docker deployment..."
     docker compose down || true
     docker compose build
     docker compose up -d
     docker image prune -f || true
-    echo ">> Upgrade complete! CCTV Hub running at http://localhost:8000"
+    echo ">> Docker upgrade complete! CCTV Hub running at http://localhost:8000"
     exit 0
 fi
 
-# 4. Native Linux / LXC Container Upgrade
-echo ">> Updating Python backend packages..."
-if [ -d ".venv" ]; then
-    .venv/bin/pip install -r backend/requirements.txt
-else
-    pip3 install -r backend/requirements.txt
-fi
-
-echo ">> Compiling React Frontend..."
-if command -v npm &> /dev/null && [ -d "frontend" ]; then
-    cd frontend
-    npm install
-    npm run build
-    cd ..
-fi
-
-echo ">> Restarting system service..."
-if command -v systemctl &> /dev/null && systemctl is-active --quiet cctv-hub; then
-    sudo systemctl restart cctv-hub
-    echo ">> Systemd service 'cctv-hub' restarted."
-else
-    echo ">> Upgrade finished! Start the server with:"
-    echo "   uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
-fi
-
-echo "========================================="
-echo "  Upgrade successfully finished!        "
-echo "========================================="
+echo ">> Upgrade complete!"
