@@ -112,4 +112,19 @@ class S3StorageService:
             logger.error(f"S3 Upload failed for {file_path.name}: {e}")
             return {"success": False, "error": str(e)}
 
+    def delete_file(self, filename: str, remote_key: Optional[str] = None) -> Dict[str, Any]:
+        if not self.config.get("enabled"):
+            return {"success": False, "error": "S3 storage is disabled"}
+
+        bucket = self.config.get("bucket_name")
+        key = remote_key or f"cctv/{Path(filename).name}"
+
+        try:
+            client = self._get_client()
+            client.delete_object(Bucket=bucket, Key=key)
+            return {"success": True, "bucket": bucket, "key": key}
+        except Exception as e:
+            logger.error(f"S3 Delete failed for {filename}: {e}")
+            return {"success": False, "error": str(e)}
+
 s3_storage = S3StorageService()

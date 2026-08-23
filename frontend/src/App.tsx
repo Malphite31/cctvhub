@@ -549,11 +549,48 @@ export const App: React.FC = () => {
         showToast(`Deleted ${data.deleted_count || filenames.length} snapshot(s)`);
       } else {
         showToast('Failed to delete some snapshots', true);
-        fetchRecordings();
       }
     } catch {
       showToast('Error deleting snapshots', true);
+    } finally {
       fetchRecordings();
+      fetchStorageLocation();
+    }
+  };
+
+  const handleClearRecordings = async () => {
+    try {
+      setRecordings([]);
+      const res = await fetch('/api/recordings/clips/clear', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`Permanently cleared ${data.deleted_count || 0} video recording(s)`);
+      } else {
+        showToast('Failed to clear video recordings', true);
+      }
+    } catch {
+      showToast('Error clearing recordings', true);
+    } finally {
+      fetchRecordings();
+      fetchStorageLocation();
+    }
+  };
+
+  const handleClearSnapshots = async () => {
+    try {
+      setSnapshots([]);
+      const res = await fetch('/api/recordings/snapshots/clear', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`Permanently cleared ${data.deleted_count || 0} snapshot(s)`);
+      } else {
+        showToast('Failed to clear snapshots', true);
+      }
+    } catch {
+      showToast('Error clearing snapshots', true);
+    } finally {
+      fetchRecordings();
+      fetchStorageLocation();
     }
   };
 
@@ -732,6 +769,8 @@ export const App: React.FC = () => {
                 onDeleteSnapshot={handleDeleteSnapshot}
                 onBatchDeleteClips={handleBatchDeleteRecordings}
                 onBatchDeleteSnapshots={handleBatchDeleteSnapshots}
+                onClearClips={handleClearRecordings}
+                onClearSnapshots={handleClearSnapshots}
                 onRefresh={fetchRecordings}
                 onShowToast={showToast}
                 userRole={currentUser.role}

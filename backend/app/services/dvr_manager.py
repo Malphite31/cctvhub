@@ -488,4 +488,199 @@ class DVRManager:
                 continue
         return items
 
+    def delete_recording_file(self, filename: str) -> bool:
+        """Permanently deletes an MP4 recording file and all companion files across all storage locations."""
+        clean_fn = Path(filename).name
+        if not clean_fn:
+            return False
+
+        base_name = clean_fn.rsplit('.', 1)[0]
+        deleted = False
+
+        search_dirs = [
+            self.get_recordings_dir(),
+            settings.RECORDINGS_DIR,
+            settings.DATA_DIR / "recordings",
+        ]
+        if self._custom_storage_dir:
+            search_dirs.append(self._custom_storage_dir)
+
+        # Check Samba mount directory if configured
+        try:
+            samba_cfg = samba_storage.get_config()
+            if samba_cfg.get("enabled") and samba_cfg.get("local_mount_path"):
+                search_dirs.append(Path(samba_cfg["local_mount_path"]))
+        except Exception:
+            pass
+
+        unique_dirs = []
+        for d in search_dirs:
+            if d and d.exists() and d.resolve() not in [ud.resolve() for ud in unique_dirs]:
+                unique_dirs.append(d)
+
+        for d in unique_dirs:
+            # 1. Main recording file
+            target = d / clean_fn
+            if target.exists() and target.is_file():
+                try:
+                    target.unlink()
+                    deleted = True
+                except Exception as e:
+                    pass
+
+            # 2. Companion files (.raw.mp4, .h264tmp.mp4, .wav, .jpg)
+            for suffix in [".raw.mp4", ".h264tmp.mp4", ".wav", ".jpg", ".png"]:
+                companion = d / f"{base_name}{suffix}"
+                if companion.exists() and companion.is_file():
+                    try:
+                        companion.unlink()
+                    except Exception:
+                        pass
+
+        # 3. If Samba is configured, also remove from Samba
+        try:
+            samba_storage.delete_file(clean_fn)
+        except Exception:
+            pass
+
+        # 4. If S3 is configured, also remove from S3
+        try:
+            if s3_storage.get_config().get("enabled"):
+                s3_storage.delete_file(clean_fn)
+        except Exception:
+            pass
+
+        return deleted
+
+    def delete_snapshot_file(self, filename: str) -> bool:
+        """Permanently deletes a snapshot image file across all storage locations."""
+        clean_fn = Path(filename).name
+        if not clean_fn:
+            return False
+
+        deleted = False
+        search_dirs = [
+            self.get_snapshots_dir(),
+            self.get_recordings_dir() / "snapshots",
+            self.get_recordings_dir(),
+            settings.SNAPSHOTS_DIR,
+            settings.DATA_DIR / "snapshots",
+        ]
+        if self._custom_storage_dir:
+            search_dirs.extend([
+                self._custom_storage_dir / "snapshots",
+                self._custom_storage_dir
+            ])
+
+        # Check Samba mount directory if configured
+        try:
+            samba_cfg = samba_storage.get_config()
+            if samba_cfg.get("enabled") and samba_cfg.get("local_mount_path"):
+                search_dirs.append(Path(samba_cfg["local_mount_path"]) / "snapshots")
+                search_dirs.append(Path(samba_cfg["local_mount_path"]))
+        except Exception:
+            pass
+
+        unique_dirs = []
+        for d in search_dirs:
+            if d and d.exists() and d.resolve() not in [ud.resolve() for ud in unique_dirs]:
+                unique_dirs.append(d)
+
+        for d in unique_dirs:
+            target = d / clean_fn
+            if target.exists() and target.is_file():
+                try:
+                    target.unlink()
+                    deleted = True
+                except Exception:
+                    pass
+
+        # Remove from Samba and S3
+        try:
+            samba_storage.delete_file(clean_fn)
+        except Exception:
+            pass
+
+        try:
+            if s3_storage.get_config().get("enabled"):
+                s3_storage.delete_file(clean_fn)
+        except Exception:
+            pass
+
+        return deleted
+
+    def clear_all_recordings(self) -> int:
+        """Permanently deletes ALL video recording files across all storage locations."""
+        deleted_count = 0
+        search_dirs = [
+            self.get_recordings_dir(),
+            settings.RECORDINGS_DIR,
+            settings.DATA_DIR / "recordings",
+        ]
+        if self._custom_storage_dir:
+            search_dirs.append(self._custom_storage_dir)
+
+        # Check Samba mount directory if configured
+        try:
+            samba_cfg = samba_storage.get_config()
+            if samba_cfg.get("enabled") and samba_cfg.get("local_mount_path"):
+                search_dirs.append(Path(samba_cfg["local_mount_path"]))
+        except Exception:
+            pass
+
+        unique_dirs = []
+        for d in search_dirs:
+            if d and d.exists() and d.resolve() not in [ud.resolve() for ud in unique_dirs]:
+                unique_dirs.append(d)
+
+        for d in unique_dirs:
+            for p in list(d.glob("*.mp4")) + list(d.glob("*.raw.mp4")) + list(d.glob("*.h264tmp.mp4")) + list(d.glob("*.wav")):
+                if p.is_file():
+                    try:
+                        p.unlink()
+                        deleted_count += 1
+                    except Exception:
+                        pass
+        return deleted_count
+
+    def clear_all_snapshots(self) -> int:
+        """Permanently deletes ALL snapshot photos across all storage locations."""
+        deleted_count = 0
+        search_dirs = [
+            self.get_snapshots_dir(),
+            self.get_recordings_dir() / "snapshots",
+            settings.SNAPSHOTS_DIR,
+            settings.DATA_DIR / "snapshots",
+        ]
+        if self._custom_storage_dir:
+            search_dirs.extend([
+                self._custom_storage_dir / "snapshots",
+                self._custom_storage_dir
+            ])
+
+        # Check Samba mount directory if configured
+        try:
+            samba_cfg = samba_storage.get_config()
+            if samba_cfg.get("enabled") and samba_cfg.get("local_mount_path"):
+                search_dirs.append(Path(samba_cfg["local_mount_path"]) / "snapshots")
+                search_dirs.append(Path(samba_cfg["local_mount_path"]))
+        except Exception:
+            pass
+
+        unique_dirs = []
+        for d in search_dirs:
+            if d and d.exists() and d.resolve() not in [ud.resolve() for ud in unique_dirs]:
+                unique_dirs.append(d)
+
+        for d in unique_dirs:
+            for pat in ["*.jpg", "*.jpeg", "*.png", "*.webp", "*.JPG", "*.JPEG", "*.PNG", "*.WEBP"]:
+                for p in list(d.glob(pat)):
+                    if p.is_file():
+                        try:
+                            p.unlink()
+                            deleted_count += 1
+                        except Exception:
+                            pass
+        return deleted_count
+
 dvr_manager = DVRManager()

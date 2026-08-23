@@ -177,4 +177,39 @@ class SambaStorageService:
 
         return {"success": False, "error": "No valid Samba host/share or mount path configured"}
 
+    def delete_file(self, filename: str) -> Dict[str, Any]:
+        if not self.config.get("enabled"):
+            return {"success": False, "error": "Samba storage is disabled"}
+
+        clean_fn = Path(filename).name
+        host = (self.config.get("host") or "").strip()
+        share = (self.config.get("share") or "").strip()
+        user = (self.config.get("username") or "").strip() or None
+        password = self.config.get("password")
+        mount_path = (self.config.get("local_mount_path") or "").strip()
+
+        # Option A: smbclient remove
+        if host and share:
+            try:
+                import smbclient
+                unc_dest = f"\\\\{host}\\{share}\\{clean_fn}"
+                if smbclient.path.exists(unc_dest):
+                    smbclient.remove(unc_dest)
+            except Exception:
+                pass
+
+        # Option B: local mount remove
+        if mount_path:
+            try:
+                dest_file = Path(mount_path) / clean_fn
+                if dest_file.exists():
+                    dest_file.unlink()
+                snap_file = Path(mount_path) / "snapshots" / clean_fn
+                if snap_file.exists():
+                    snap_file.unlink()
+            except Exception:
+                pass
+
+        return {"success": True}
+
 samba_storage = SambaStorageService()

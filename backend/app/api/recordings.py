@@ -31,42 +31,37 @@ def batch_delete_snapshots(req: BatchDeleteRequest):
     """Batch delete multiple snapshot files."""
     deleted = []
     for fn in req.filenames:
-        filepath = settings.SNAPSHOTS_DIR / fn
-        if filepath.exists() and filepath.is_file():
-            try:
-                filepath.unlink()
-                deleted.append(fn)
-            except Exception:
-                pass
+        if dvr_manager.delete_snapshot_file(fn):
+            deleted.append(fn)
     return {"status": "success", "deleted_count": len(deleted), "filenames": deleted}
 
-@router.get("/snapshots/{filename}")
-@router.get("/snapshot/{filename}")
+@router.delete("/snapshots/clear")
+@router.post("/snapshots/clear")
+def clear_snapshots():
+    """Permanently delete all snapshot photo files across storage."""
+    count = dvr_manager.clear_all_snapshots()
+    return {"status": "success", "deleted_count": count}
+
+@router.get("/snapshots/{filename:path}")
+@router.get("/snapshot/{filename:path}")
 def serve_snapshot(filename: str):
     """Serve a specific snapshot image."""
-    for d in [dvr_manager.get_snapshots_dir(), settings.SNAPSHOTS_DIR]:
-        filepath = d / filename
+    clean_fn = Path(filename).name
+    for d in [dvr_manager.get_snapshots_dir(), dvr_manager.get_recordings_dir() / "snapshots", settings.SNAPSHOTS_DIR]:
+        filepath = d / clean_fn
         if filepath.exists() and filepath.is_file():
             return FileResponse(filepath, media_type="image/jpeg")
     raise HTTPException(status_code=404, detail="Snapshot not found")
 
-@router.delete("/snapshots/{filename}")
-@router.delete("/snapshot/{filename}")
-@router.post("/snapshots/{filename}/delete")
-@router.post("/snapshot/{filename}/delete")
+@router.delete("/snapshots/{filename:path}")
+@router.delete("/snapshot/{filename:path}")
+@router.post("/snapshots/{filename:path}/delete")
+@router.post("/snapshot/{filename:path}/delete")
 def delete_snapshot(filename: str):
     """Delete a snapshot file."""
-    deleted = False
-    for d in [dvr_manager.get_snapshots_dir(), settings.SNAPSHOTS_DIR]:
-        filepath = d / filename
-        if filepath.exists() and filepath.is_file():
-            try:
-                filepath.unlink()
-                deleted = True
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Failed to delete file: {e}")
-    if deleted:
-        return {"status": "deleted", "filename": filename}
+    clean_fn = Path(filename).name
+    if dvr_manager.delete_snapshot_file(clean_fn):
+        return {"status": "deleted", "filename": clean_fn}
     raise HTTPException(status_code=404, detail="Snapshot not found")
 
 @router.post("/record/start")
@@ -97,30 +92,41 @@ def batch_delete_clips(req: BatchDeleteRequest):
     """Batch delete multiple MP4 video clips."""
     deleted = []
     for fn in req.filenames:
-        for d in [dvr_manager.get_recordings_dir(), settings.RECORDINGS_DIR]:
-            filepath = d / fn
-            if filepath.exists() and filepath.is_file():
-                try:
-                    filepath.unlink()
-                    deleted.append(fn)
-                except Exception:
-                    pass
-            raw_fp = filepath.with_suffix('.raw.mp4')
-            if raw_fp.exists():
-                try:
-                    raw_fp.unlink()
-                except Exception:
-                    pass
+        if dvr_manager.delete_recording_file(fn):
+            deleted.append(fn)
     return {"status": "success", "deleted_count": len(deleted), "filenames": deleted}
 
-@router.get("/clips/{filename}")
-@router.get("/clip/{filename}")
-@router.get("/video/{filename}")
+@router.delete("/clips/clear")
+@router.delete("/recordings/clear")
+@router.post("/clips/clear")
+@router.post("/recordings/clear")
+def clear_recordings():
+    """Permanently delete all video recording files across storage."""
+    count = dvr_manager.clear_all_recordings()
+    return {"status": "success", "deleted_count": count}
+
+@router.delete("/clear-all")
+@router.post("/clear-all")
+def clear_all_media():
+    """Permanently purge all video clips and snapshot photos."""
+    clips_count = dvr_manager.clear_all_recordings()
+    snaps_count = dvr_manager.clear_all_snapshots()
+    return {
+        "status": "success",
+        "deleted_clips": clips_count,
+        "deleted_snapshots": snaps_count,
+        "total_deleted": clips_count + snaps_count
+    }
+
+@router.get("/clips/{filename:path}")
+@router.get("/clip/{filename:path}")
+@router.get("/video/{filename:path}")
 def serve_recording(filename: str, request: Request):
     """Serve a recorded MP4 clip for video streaming/download with HTTP 206 Partial Content range support."""
+    clean_fn = Path(filename).name
     filepath = None
     for d in [dvr_manager.get_recordings_dir(), settings.RECORDINGS_DIR]:
-        p = d / filename
+        p = d / clean_fn
         if p.exists() and p.is_file():
             filepath = p
             break
@@ -165,32 +171,18 @@ def serve_recording(filename: str, request: Request):
     return FileResponse(
         filepath,
         media_type="video/mp4",
-        filename=filename,
+        filename=clean_fn,
         headers={"Accept-Ranges": "bytes"}
     )
 
-@router.delete("/clips/{filename}")
-@router.delete("/clip/{filename}")
-@router.delete("/video/{filename}")
-@router.post("/clips/{filename}/delete")
-@router.post("/clip/{filename}/delete")
+@router.delete("/clips/{filename:path}")
+@router.delete("/clip/{filename:path}")
+@router.delete("/video/{filename:path}")
+@router.post("/clips/{filename:path}/delete")
+@router.post("/clip/{filename:path}/delete")
 def delete_recording(filename: str):
     """Delete a recording file."""
-    deleted = False
-    for d in [dvr_manager.get_recordings_dir(), settings.RECORDINGS_DIR]:
-        filepath = d / filename
-        if filepath.exists():
-            try:
-                filepath.unlink()
-                deleted = True
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Failed to delete file: {e}")
-        raw_fp = filepath.with_suffix('.raw.mp4')
-        if raw_fp.exists():
-            try:
-                raw_fp.unlink()
-            except Exception:
-                pass
-    if deleted:
-        return {"status": "deleted", "filename": filename}
+    clean_fn = Path(filename).name
+    if dvr_manager.delete_recording_file(clean_fn):
+        return {"status": "deleted", "filename": clean_fn}
     raise HTTPException(status_code=404, detail="Recording not found")

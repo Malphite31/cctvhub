@@ -299,3 +299,30 @@ def sync_to_samba(filename: str):
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("error", "Samba sync failed"))
     return result
+
+@router.delete("/clear/recordings")
+@router.post("/clear/recordings")
+def clear_storage_recordings():
+    """Purge all recorded video clips from storage."""
+    count = dvr_manager.clear_all_recordings()
+    return {"status": "success", "deleted_count": count}
+
+@router.delete("/clear/snapshots")
+@router.post("/clear/snapshots")
+def clear_storage_snapshots():
+    """Purge all snapshot photos from storage."""
+    count = dvr_manager.clear_all_snapshots()
+    return {"status": "success", "deleted_count": count}
+
+@router.delete("/clear/all")
+@router.post("/clear/all")
+def clear_storage_all():
+    """Purge all video clips and snapshot photos from storage."""
+    rec_count = dvr_manager.clear_all_recordings()
+    snap_count = dvr_manager.clear_all_snapshots()
+    return {
+        "status": "success",
+        "deleted_recordings": rec_count,
+        "deleted_snapshots": snap_count,
+        "total_deleted": rec_count + snap_count
+    }

@@ -27,6 +27,8 @@ interface DVRTimelineProps {
   onDeleteSnapshot: (filename: string) => void;
   onBatchDeleteClips?: (filenames: string[]) => void;
   onBatchDeleteSnapshots?: (filenames: string[]) => void;
+  onClearClips?: () => void;
+  onClearSnapshots?: () => void;
   onRefresh: () => void;
   onShowToast: (msg: string, isErr?: boolean) => void;
   userRole?: string;
@@ -40,6 +42,8 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
   onDeleteSnapshot,
   onBatchDeleteClips,
   onBatchDeleteSnapshots,
+  onClearClips,
+  onClearSnapshots,
   onRefresh,
   onShowToast,
   userRole = 'admin',
@@ -51,6 +55,7 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
   const [selectedSnapshots, setSelectedSnapshots] = useState<string[]>([]);
   const [itemToDelete, setItemToDelete] = useState<{ type: 'clip' | 'snapshot'; filename: string } | null>(null);
   const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
+  const [showClearModal, setShowClearModal] = useState(false);
 
   const [previewClip, setPreviewClip] = useState<string | null>(null);
   const [previewClipName, setPreviewClipName] = useState<string | null>(null);
@@ -217,6 +222,17 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
     setShowBatchDeleteModal(false);
   };
 
+  const handleConfirmClear = () => {
+    if (activeTab === 'clips' && onClearClips) {
+      onClearClips();
+      setSelectedClips([]);
+    } else if (activeTab === 'snapshots' && onClearSnapshots) {
+      onClearSnapshots();
+      setSelectedSnapshots([]);
+    }
+    setShowClearModal(false);
+  };
+
   const currentSelectedCount = activeTab === 'clips' ? selectedClips.length : selectedSnapshots.length;
 
   return (
@@ -327,15 +343,29 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
             )}
           </div>
 
-          {currentSelectedCount > 0 && !isViewer && (
+          {!isViewer && (
             <div className="flex items-center gap-2 animate-in fade-in duration-150">
-              <button
-                onClick={() => setShowBatchDeleteModal(true)}
-                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-medium transition-colors shadow-lg shadow-rose-900/30"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                <span>Delete Selected ({currentSelectedCount})</span>
-              </button>
+              {currentSelectedCount > 0 && (
+                <button
+                  onClick={() => setShowBatchDeleteModal(true)}
+                  className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-medium transition-colors shadow-lg shadow-rose-900/30"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Delete Selected ({currentSelectedCount})</span>
+                </button>
+              )}
+
+              {((activeTab === 'clips' && recordings.length > 0 && onClearClips) ||
+                (activeTab === 'snapshots' && snapshots.length > 0 && onClearSnapshots)) && (
+                <button
+                  onClick={() => setShowClearModal(true)}
+                  className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#18181b] hover:bg-rose-950/40 hover:text-rose-400 border border-[#2a2a30] hover:border-rose-800 text-zinc-300 rounded-lg font-medium transition-colors"
+                  title={activeTab === 'clips' ? 'Clear all video recordings' : 'Clear all snapshot photos'}
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                  <span>Clear All {activeTab === 'clips' ? 'Videos' : 'Photos'}</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -717,6 +747,22 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
         variant="danger"
         onConfirm={handleConfirmBatchDelete}
         onClose={() => setShowBatchDeleteModal(false)}
+      />
+
+      {/* Clear All Media Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showClearModal}
+        title={activeTab === 'clips' ? 'Clear All Video Recordings' : 'Clear All Snapshots'}
+        message={
+          <p>
+            Are you sure you want to permanently delete all <strong className="text-white">{activeTab === 'clips' ? recordings.length : snapshots.length}</strong> {activeTab === 'clips' ? 'video recordings' : 'snapshots'} from storage?
+            This will remove all files from local, custom, and mirrored storage.
+          </p>
+        }
+        confirmText={activeTab === 'clips' ? 'Clear All Videos' : 'Clear All Snapshots'}
+        variant="danger"
+        onConfirm={handleConfirmClear}
+        onClose={() => setShowClearModal(false)}
       />
     </div>
   );

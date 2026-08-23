@@ -7,10 +7,14 @@ import {
   Server,
   CheckCircle2,
   AlertCircle,
-  Layers
+  Layers,
+  Trash2,
+  Film,
+  Image as ImageIcon
 } from 'lucide-react';
 import { StorageLocationInfo, S3Config, SambaConfig } from '../types';
 import { DirectoryPickerModal } from './DirectoryPickerModal';
+import { ConfirmModal } from './ConfirmModal';
 
 interface StorageViewProps {
   storageLocation: StorageLocationInfo | null;
@@ -54,6 +58,38 @@ export const StorageView: React.FC<StorageViewProps> = ({
   });
   const [sambaTesting, setSambaTesting] = useState(false);
   const [sambaTestMsg, setSambaTestMsg] = useState<{ success: boolean; text: string } | null>(null);
+  const [purgeTarget, setPurgeTarget] = useState<'recordings' | 'snapshots' | 'all' | null>(null);
+
+  const handleConfirmPurge = async () => {
+    if (!purgeTarget) return;
+    try {
+      const endpoint =
+        purgeTarget === 'recordings'
+          ? '/api/storage/clear/recordings'
+          : purgeTarget === 'snapshots'
+          ? '/api/storage/clear/snapshots'
+          : '/api/storage/clear/all';
+
+      const res = await fetch(endpoint, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        onShowToast(
+          purgeTarget === 'recordings'
+            ? `Purged ${data.deleted_count || 0} video recording(s) from storage`
+            : purgeTarget === 'snapshots'
+            ? `Purged ${data.deleted_count || 0} snapshot photo(s) from storage`
+            : `Purged ${data.total_deleted || 0} total media files from storage`
+        );
+        onRefresh();
+      } else {
+        onShowToast('Failed to purge media files from storage', true);
+      }
+    } catch {
+      onShowToast('Error purging storage media', true);
+    } finally {
+      setPurgeTarget(null);
+    }
+  };
 
   useEffect(() => {
     if (storageLocation) {
@@ -275,6 +311,88 @@ export const StorageView: React.FC<StorageViewProps> = ({
           <div className="p-2.5 sm:p-3 rounded-lg bg-[#161616] border border-[#222222]">
             <span className="text-[10px] text-zinc-400 font-mono">Occupancy</span>
             <p className="text-sm sm:text-base font-bold text-[#3B82F6] font-mono mt-0.5">{diskPercent}%</p>
+          </div>
+        </div>
+
+        {/* Media Breakdown & Storage Management */}
+        <div className="p-3 rounded-xl bg-[#141416] border border-[#222226] space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-zinc-300">Active Storage Footprint</span>
+            {!isViewer && (
+              <button
+                type="button"
+                onClick={() => setPurgeTarget('all')}
+                className="flex items-center gap-1 text-[10px] font-mono font-medium text-rose-400 hover:text-rose-300 transition-colors"
+                title="Purge all videos and snapshots from storage"
+              >
+                <Trash2 className="h-3 w-3" />
+                <span>Purge All Media</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {/* Video Recordings */}
+            <div className="flex items-center justify-between p-2 rounded-lg bg-[#19191d] border border-[#26262c]">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-1.5 rounded-md bg-blue-500/10 text-[#3B82F6]">
+                  <Film className="h-3.5 w-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-white truncate">Video Clips</p>
+                  <p className="text-[10px] text-zinc-400 font-mono">{storageLocation?.recordings_mb || 0} MB</p>
+                </div>
+              </div>
+              {!isViewer && (
+                <button
+                  type="button"
+                  onClick={() => setPurgeTarget('recordings')}
+                  className="px-2 py-1 text-[10px] font-mono text-zinc-400 hover:text-rose-400 hover:bg-rose-950/30 rounded border border-[#333] hover:border-rose-800 transition-all"
+                  title="Purge all video recordings"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Snapshots */}
+            <div className="flex items-center justify-between p-2 rounded-lg bg-[#19191d] border border-[#26262c]">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-1.5 rounded-md bg-emerald-500/10 text-emerald-400">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-white truncate">Photos & Snaps</p>
+                  <p className="text-[10px] text-zinc-400 font-mono">{storageLocation?.snapshots_mb || 0} MB</p>
+                </div>
+              </div>
+              {!isViewer && (
+                <button
+                  type="button"
+                  onClick={() => setPurgeTarget('snapshots')}
+                  className="px-2 py-1 text-[10px] font-mono text-zinc-400 hover:text-rose-400 hover:bg-rose-950/30 rounded border border-[#333] hover:border-rose-800 transition-all"
+                  title="Purge all snapshot photos"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Face Profiles */}
+            <div className="flex items-center justify-between p-2 rounded-lg bg-[#19191d] border border-[#26262c]">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-1.5 rounded-md bg-purple-500/10 text-purple-400">
+                  <HardDrive className="h-3.5 w-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-white truncate">Face Profiles</p>
+                  <p className="text-[10px] text-zinc-400 font-mono">{storageLocation?.faces_mb || 0} MB</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono text-zinc-500 px-1.5 py-0.5 bg-zinc-800/60 rounded">
+                DB Managed
+              </span>
+            </div>
           </div>
         </div>
 
@@ -739,6 +857,43 @@ export const StorageView: React.FC<StorageViewProps> = ({
         initialPath={customPath}
         onSelectPath={handleSelectBrowserPath}
         onShowToast={onShowToast}
+      />
+
+      {/* Storage Media Purge Confirmation Modal */}
+      <ConfirmModal
+        isOpen={purgeTarget !== null}
+        title={
+          purgeTarget === 'recordings'
+            ? 'Purge All Video Recordings'
+            : purgeTarget === 'snapshots'
+            ? 'Purge All Snapshot Photos'
+            : 'Purge All Media from Storage'
+        }
+        message={
+          <p>
+            Are you sure you want to permanently delete{' '}
+            <strong className="text-white">
+              {purgeTarget === 'recordings'
+                ? `all video recordings (${storageLocation?.recordings_mb || 0} MB)`
+                : purgeTarget === 'snapshots'
+                ? `all snapshot photos (${storageLocation?.snapshots_mb || 0} MB)`
+                : `all video recordings and snapshot photos (${((storageLocation?.recordings_mb || 0) + (storageLocation?.snapshots_mb || 0)).toFixed(1)} MB)`}
+            </strong>{' '}
+            from storage?
+            <br />
+            This will permanently remove the files from local host disk, custom paths, and mirrored Samba/S3 locations.
+          </p>
+        }
+        confirmText={
+          purgeTarget === 'recordings'
+            ? 'Purge Videos'
+            : purgeTarget === 'snapshots'
+            ? 'Purge Photos'
+            : 'Purge All Media'
+        }
+        variant="danger"
+        onConfirm={handleConfirmPurge}
+        onClose={() => setPurgeTarget(null)}
       />
     </div>
   );
