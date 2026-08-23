@@ -167,6 +167,13 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
   const hasCameras = devices && devices.length > 0;
 
+  const currentCam = devices.find((d) => d.device === activeDevice) || (hasCameras ? devices[0] : {
+    device: activeDevice || '0',
+    name: 'No Camera Selected',
+    resolution: '1920x1080',
+    fps: 60
+  });
+
   // Fetch camera adjustments (flip, rotation, zoom, color)
   const fetchAdjustments = async (dev: string) => {
     if (!dev) return;
@@ -260,6 +267,13 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Sync selected resolution with active camera device
+  useEffect(() => {
+    if (currentCam?.resolution) {
+      setSelectedResolution(currentCam.resolution);
+    }
+  }, [currentCam?.device, currentCam?.resolution]);
 
   // Fetch custom trackers for active camera
   const fetchCustomTrackers = async () => {
@@ -406,26 +420,24 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
   const handleResolutionChange = async (res: CameraResolutionOption | string) => {
     setShowResMenu(false);
-    let w = 1920, h = 1080, fpsVal = 60, label = '';
+    let w = 1920, h = 1080, fpsVal = 60, resStr = '1920x1080', label = '';
     if (typeof res === 'object') {
       label = res.label;
+      resStr = res.value;
       const parts = res.value.split('x');
       w = parseInt(parts[0], 10) || 1920;
       h = parseInt(parts[1], 10) || 1080;
       fpsVal = parseInt(res.fps.replace(/[^0-9]/g, ''), 10) || 60;
     } else {
       label = res;
-      if (res.includes('3840x2160') || res.includes('4K')) {
-        w = 3840; h = 2160; fpsVal = 30;
-      } else if (res.includes('1920x1080') || res.includes('1080p')) {
-        w = 1920; h = 1080; fpsVal = 60;
-      } else if (res.includes('1280x720') || res.includes('720p')) {
-        w = 1280; h = 720; fpsVal = 60;
-      } else if (res.includes('640x480') || res.includes('VGA')) {
-        w = 640; h = 480; fpsVal = 60;
+      resStr = res.includes('(') ? (res.match(/\((.*?)\)/)?.[1] || res) : res;
+      const parts = resStr.split('x');
+      if (parts.length === 2) {
+        w = parseInt(parts[0], 10) || 1920;
+        h = parseInt(parts[1], 10) || 1080;
       }
     }
-    setSelectedResolution(label || `${w}x${h}`);
+    setSelectedResolution(resStr);
 
     try {
       await fetch(`/api/stream/resolution?dev=${encodeURIComponent(activeDevice)}&width=${w}&height=${h}&fps=${fpsVal}`, {
@@ -532,11 +544,6 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
       setIsScanning(false);
     }
   };
-
-  const currentCam = devices.find((d) => d.device === activeDevice) || (hasCameras ? devices[0] : {
-    device: activeDevice || '0',
-    name: 'No Camera Selected'
-  });
 
   const supportedResolutions: CameraResolutionOption[] = (currentCam?.supported_resolutions && currentCam.supported_resolutions.length > 0)
     ? currentCam.supported_resolutions
@@ -786,7 +793,8 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                     <span className="text-[8px] text-[#3B82F6]">Live Probed</span>
                   </div>
                   {supportedResolutions.map((res) => {
-                    const isSelected = (currentCam?.resolution === res.value) || selectedResolution.includes(res.value) || selectedResolution === res.label;
+                    const activeRes = (selectedResolution || currentCam?.resolution || '').split(' ')[0].trim();
+                    const isSelected = res.value.trim() === activeRes || res.label.trim() === activeRes;
                     return (
                       <button
                         key={res.value}
