@@ -50,9 +50,14 @@ if [ "$IS_SYSTEMD" = true ]; then
         echo ">> Systemd service 'cctv-hub' restarted successfully!"
     fi
 
+    # Create 1-word global update command
+    chmod +x /opt/cctv-hub/update.sh 2>/dev/null || true
+    ln -sf /opt/cctv-hub/update.sh /usr/local/bin/cctv-update 2>/dev/null || true
+
     echo "========================================="
     echo "  Upgrade Successfully Finished!        "
     echo "  Dashboard running at http://localhost:8000"
+    echo "  Quick update command: cctv-update     "
     echo "========================================="
     exit 0
 fi

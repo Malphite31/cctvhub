@@ -99,6 +99,11 @@ systemctl daemon-reload
 systemctl enable cctv-hub
 systemctl restart cctv-hub
 
+# Create 1-word global update command
+chmod +x /opt/cctv-hub/update.sh
+ln -sf /opt/cctv-hub/update.sh /usr/local/bin/cctv-update
+chmod +x /usr/local/bin/cctv-update
+
 HOST_IP=$(hostname -I | awk '{print $1}' || echo "localhost")
 
 echo "=========================================================="
@@ -106,5 +111,5 @@ echo "  Installation Successful!                                "
 echo "=========================================================="
 echo "  Dashboard URL   : http://${HOST_IP}:8000"
 echo "  Service Status  : systemctl status cctv-hub"
-echo "  Upgrade via Git : cd ${INSTALL_DIR} && ./update.sh"
+echo "  1-Word Updater  : cctv-update"
 echo "=========================================================="
