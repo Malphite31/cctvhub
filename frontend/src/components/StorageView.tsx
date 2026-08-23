@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { HardDrive, FolderOpen, Cloud, Server, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  HardDrive,
+  FolderOpen,
+  FolderSearch,
+  Cloud,
+  Server,
+  CheckCircle2,
+  AlertCircle
+} from 'lucide-react';
 import { StorageLocationInfo, S3Config, SambaConfig } from '../types';
+import { DirectoryPickerModal } from './DirectoryPickerModal';
 
 interface StorageViewProps {
   storageLocation: StorageLocationInfo | null;
@@ -17,6 +26,7 @@ export const StorageView: React.FC<StorageViewProps> = ({
 }) => {
   const isViewer = userRole === 'viewer';
   const [customPath, setCustomPath] = useState('');
+  const [isBrowserOpen, setIsBrowserOpen] = useState(false);
   const [s3Config, setS3Config] = useState<S3Config>({
     enabled: false,
     endpoint_url: '',
@@ -55,16 +65,18 @@ export const StorageView: React.FC<StorageViewProps> = ({
       .catch(() => {});
   }, [storageLocation]);
 
-  const handleSaveLocation = async () => {
+  const handleSaveLocation = async (targetPath?: string) => {
+    const pathToSave = targetPath || customPath;
     try {
       const res = await fetch('/api/storage/location', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: customPath })
+        body: JSON.stringify({ path: pathToSave })
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        onShowToast('Storage save location updated');
+        onShowToast(`Storage save location updated to "${pathToSave}"`);
+        setCustomPath(pathToSave);
         onRefresh();
       } else {
         onShowToast(`Error: ${data.detail || data.error || 'Invalid directory'}`, true);
@@ -72,6 +84,11 @@ export const StorageView: React.FC<StorageViewProps> = ({
     } catch {
       onShowToast('Failed to update storage directory', true);
     }
+  };
+
+  const handleSelectBrowserPath = (selectedPath: string) => {
+    setCustomPath(selectedPath);
+    handleSaveLocation(selectedPath);
   };
 
   const handleOpenFolder = async () => {
@@ -218,27 +235,61 @@ export const StorageView: React.FC<StorageViewProps> = ({
           </div>
         </div>
 
-        {/* Directory Input */}
+        {/* Directory Input & Interactive Browser */}
         <div className="space-y-1.5">
-          <label className="block text-[11px] font-medium text-zinc-300">
-            Host Video Recordings & Snapshots Path
-          </label>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-            <input
-              type="text"
-              value={customPath}
-              disabled={isViewer}
-              onChange={(e) => setCustomPath(e.target.value)}
-              placeholder="e.g. D:\CCTV_Recordings or /mnt/cctv"
-              className="flex-1 bg-[#161616] border border-[#222222] rounded-lg px-3 py-1.5 text-white text-xs font-mono focus:border-[#3B82F6] focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
-            />
+          <div className="flex items-center justify-between">
+            <label className="block text-[11px] font-medium text-zinc-300">
+              Host Video Recordings & Snapshots Path
+            </label>
             {!isViewer && (
-              <button
-                onClick={handleSaveLocation}
-                className="px-4 py-1.5 bg-[#3B82F6] hover:bg-blue-600 text-white font-medium rounded-lg transition-colors text-xs shrink-0"
-              >
-                Update Path
-              </button>
+              <span className="text-[10px] text-zinc-500 font-mono">
+                Click Browse to pick any drive or folder
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={customPath}
+                disabled={isViewer}
+                onChange={(e) => setCustomPath(e.target.value)}
+                placeholder="e.g. /opt/cctv-hub/backend/data/recordings"
+                className="w-full bg-[#161616] border border-[#222222] rounded-lg pl-3 pr-8 py-1.5 text-white text-xs font-mono focus:border-[#3B82F6] focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+              />
+              {!isViewer && (
+                <button
+                  type="button"
+                  onClick={() => setIsBrowserOpen(true)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-[#3B82F6] transition-colors"
+                  title="Browse Host Directories"
+                >
+                  <FolderSearch className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {!isViewer && (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsBrowserOpen(true)}
+                  className="px-3.5 py-1.5 bg-[#16161c] hover:bg-[#202028] border border-[#3B82F6]/60 hover:border-[#3B82F6] text-white font-medium rounded-lg transition-colors text-xs flex items-center gap-1.5 shadow-sm"
+                  title="Browse drives and folders without manual typing"
+                >
+                  <FolderSearch className="h-3.5 w-3.5 text-[#3B82F6]" />
+                  <span>Browse / Select Folder</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSaveLocation()}
+                  className="px-4 py-1.5 bg-[#3B82F6] hover:bg-blue-600 text-white font-medium rounded-lg transition-colors text-xs shrink-0 shadow-sm"
+                >
+                  Update Path
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -482,6 +533,15 @@ export const StorageView: React.FC<StorageViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Interactive Directory Picker Modal */}
+      <DirectoryPickerModal
+        isOpen={isBrowserOpen}
+        onClose={() => setIsBrowserOpen(false)}
+        initialPath={customPath}
+        onSelectPath={handleSelectBrowserPath}
+        onShowToast={onShowToast}
+      />
     </div>
   );
 };

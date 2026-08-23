@@ -1,8 +1,8 @@
 import os
 import psutil
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Query
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 from ..services.s3_storage import s3_storage
 from ..services.samba_storage import samba_storage
 from ..services.dvr_manager import dvr_manager
@@ -21,7 +21,161 @@ def get_dir_size(path: Path) -> int:
         pass
     return total
 
-# --- Local Storage Location Endpoints ---
+def get_system_drives() -> List[Dict[str, Any]]:
+    """Returns detected physical drives, mounted disks, and top-level storage directories."""
+    drives = []
+    seen = set()
+
+    try:
+        for p in psutil.disk_partitions(all=False):
+            mount = p.mountpoint
+            if not mount or mount in seen:
+                continue
+            seen.add(mount)
+            label = p.device if p.device else mount
+            try:
+                usage = psutil.disk_usage(mount)
+                free_gb = round(usage.free / (1024**3), 1)
+                total_gb = round(usage.total / (1024**3), 1)
+            except Exception:
+                free_gb = 0
+                total_gb = 0
+            drives.append({
+                "name": mount,
+                "path": mount,
+                "label": f"{mount} ({label})" if label != mount else mount,
+                "free_gb": free_gb,
+                "total_gb": total_gb,
+                "fstype": p.fstype or "local"
+            })
+    except Exception:
+        pass
+
+    # Add standard Linux root and mount paths if not already captured
+    if os.name != "nt":
+        common_linux = ["/", "/mnt", "/media", "/opt", "/var", "/home"]
+        for c in common_linux:
+            if os.path.exists(c) and c not in seen:
+                seen.add(c)
+                try:
+                    usage = psutil.disk_usage(c)
+                    free_gb = round(usage.free / (1024**3), 1)
+                    total_gb = round(usage.total / (1024**3), 1)
+                except Exception:
+                    free_gb = 0
+                    total_gb = 0
+                drives.append({
+                    "name": c,
+                    "path": c,
+                    "label": c,
+                    "free_gb": free_gb,
+                    "total_gb": total_gb,
+                    "fstype": "ext4/zfs"
+                })
+
+    return drives
+
+# --- Local Storage Location & Directory Browser Endpoints ---
+@router.get("/browse")
+def browse_storage_directory(path: Optional[str] = Query(None)):
+    """Browse directories and drives on the host system for interactive folder selection."""
+    rec_dir = dvr_manager.get_recordings_dir()
+
+    if not path or not path.strip():
+        target_path = rec_dir if rec_dir.exists() else Path.home()
+    else:
+        target_path = Path(path.strip())
+
+    if not target_path.exists():
+        target_path = rec_dir if rec_dir.exists() else Path("/")
+
+    target_path = target_path.resolve()
+
+    # Determine parent directory
+    parent_path = str(target_path.parent) if target_path.parent != target_path else None
+
+    # Disk usage for current path
+    try:
+        disk = psutil.disk_usage(str(target_path))
+        free_gb = round(disk.free / (1024**3), 1)
+        total_gb = round(disk.total / (1024**3), 1)
+        used_gb = round(disk.used / (1024**3), 1)
+        percent = disk.percent
+    except Exception:
+        free_gb = total_gb = used_gb = percent = 0
+
+    is_writable = os.access(str(target_path), os.W_OK)
+
+    # Scan child directories
+    folders = []
+    try:
+        with os.scandir(str(target_path)) as entries:
+            for entry in entries:
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        name = entry.name
+                        if name.startswith(".") or name.startswith("$") or name in ["System Volume Information", "Recovery", "$RECYCLE.BIN"]:
+                            continue
+                        folders.append({
+                            "name": name,
+                            "path": str(Path(entry.path)),
+                            "is_writable": os.access(entry.path, os.W_OK),
+                            "is_dir": True
+                        })
+                except (PermissionError, OSError):
+                    continue
+    except (PermissionError, OSError):
+        pass
+
+    folders.sort(key=lambda x: x["name"].lower())
+    drives = get_system_drives()
+
+    # Breadcrumb segments
+    breadcrumbs = []
+    curr = target_path
+    while True:
+        breadcrumbs.insert(0, {"name": curr.name or str(curr), "path": str(curr)})
+        if curr.parent == curr:
+            break
+        curr = curr.parent
+
+    return {
+        "current_path": str(target_path),
+        "parent_path": parent_path,
+        "is_writable": is_writable,
+        "free_gb": free_gb,
+        "total_gb": total_gb,
+        "used_gb": used_gb,
+        "disk_percent": percent,
+        "folders": folders,
+        "drives": drives,
+        "breadcrumbs": breadcrumbs
+    }
+
+@router.post("/create-folder")
+def create_storage_folder(data: Dict[str, str] = Body(...)):
+    """Create a new folder inside a parent directory."""
+    parent_path = data.get("parent_path")
+    folder_name = (data.get("folder_name") or "").strip()
+
+    if not parent_path or not folder_name:
+        raise HTTPException(status_code=400, detail="Parent path and folder name are required")
+
+    # Sanitize folder name
+    for invalid_char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|']:
+        folder_name = folder_name.replace(invalid_char, '_')
+
+    target_dir = Path(parent_path) / folder_name
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        return {
+            "success": True,
+            "path": str(target_dir.resolve()),
+            "message": f"Created folder '{folder_name}'"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create folder: {e}")
+
 @router.get("/location")
 def get_storage_location():
     """Get active local save directory path and real disk space breakdown."""

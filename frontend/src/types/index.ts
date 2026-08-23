@@ -196,5 +196,34 @@ export interface UserSessionLog {
   status: 'active' | 'ended';
 }
 
+export interface SystemDriveInfo {
+  name: string;
+  path: string;
+  label: string;
+  free_gb: number;
+  total_gb: number;
+  fstype?: string;
+}
+
+export interface DirectoryItem {
+  name: string;
+  path: string;
+  is_writable: boolean;
+  is_dir: boolean;
+}
+
+export interface DirectoryBrowseResult {
+  current_path: string;
+  parent_path: string | null;
+  is_writable: boolean;
+  free_gb: number;
+  total_gb: number;
+  used_gb: number;
+  disk_percent: number;
+  folders: DirectoryItem[];
+  drives: SystemDriveInfo[];
+  breadcrumbs: { name: string; path: string }[];
+}
+
 
 
