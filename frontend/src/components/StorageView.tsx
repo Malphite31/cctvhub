@@ -6,7 +6,8 @@ import {
   Cloud,
   Server,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Layers
 } from 'lucide-react';
 import { StorageLocationInfo, S3Config, SambaConfig } from '../types';
 import { DirectoryPickerModal } from './DirectoryPickerModal';
@@ -27,6 +28,9 @@ export const StorageView: React.FC<StorageViewProps> = ({
   const isViewer = userRole === 'viewer';
   const [customPath, setCustomPath] = useState('');
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
+  const [currentTargetMode, setCurrentTargetMode] = useState<'local' | 'samba' | 's3' | 'all'>('local');
+  const [purgeLocal, setPurgeLocal] = useState<boolean>(false);
+
   const [s3Config, setS3Config] = useState<S3Config>({
     enabled: false,
     endpoint_url: '',
@@ -53,8 +57,19 @@ export const StorageView: React.FC<StorageViewProps> = ({
 
   useEffect(() => {
     if (storageLocation) {
-      setCustomPath(storageLocation.recordings_path);
+      if (storageLocation.recordings_path) {
+        setCustomPath(storageLocation.recordings_path);
+      }
+      if (storageLocation.target_mode) {
+        setCurrentTargetMode(storageLocation.target_mode);
+      }
+      if (storageLocation.purge_local_after_upload !== undefined) {
+        setPurgeLocal(storageLocation.purge_local_after_upload);
+      }
     }
+  }, [storageLocation?.recordings_path, storageLocation?.target_mode, storageLocation?.purge_local_after_upload]);
+
+  useEffect(() => {
     fetch('/api/storage/s3/config')
       .then((r) => r.json())
       .then((d) => { if (d.config) setS3Config(d.config); })
@@ -63,10 +78,37 @@ export const StorageView: React.FC<StorageViewProps> = ({
       .then((r) => r.json())
       .then((d) => { if (d.config) setSambaConfig(d.config); })
       .catch(() => {});
-  }, [storageLocation]);
+  }, []);
+
+  const handleUpdateTargetMode = async (mode: 'local' | 'samba' | 's3' | 'all', purge: boolean) => {
+    setCurrentTargetMode(mode);
+    setPurgeLocal(purge);
+    try {
+      const res = await fetch('/api/storage/target-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_mode: mode, purge_local_after_upload: purge })
+      });
+      if (res.ok) {
+        const modeLabels: Record<string, string> = {
+          local: 'Local Storage Only',
+          samba: 'Samba / NAS Only',
+          s3: 'S3 Cloud Only',
+          all: 'Multi-Destination Mirror'
+        };
+        onShowToast(`Primary Storage Route: ${modeLabels[mode] || mode}`);
+        onRefresh();
+      } else {
+        onShowToast('Failed to update storage routing mode', true);
+      }
+    } catch {
+      onShowToast('Error updating storage routing mode', true);
+    }
+  };
 
   const handleSaveLocation = async (targetPath?: string) => {
-    const pathToSave = targetPath || customPath;
+    const pathToSave = (targetPath || customPath || '').trim();
+    if (!pathToSave) return;
     try {
       const res = await fetch('/api/storage/location', {
         method: 'POST',
@@ -86,9 +128,10 @@ export const StorageView: React.FC<StorageViewProps> = ({
     }
   };
 
-  const handleSelectBrowserPath = (selectedPath: string) => {
+  const handleSelectBrowserPath = async (selectedPath: string) => {
     setCustomPath(selectedPath);
-    handleSaveLocation(selectedPath);
+    setIsBrowserOpen(false);
+    await handleSaveLocation(selectedPath);
   };
 
   const handleOpenFolder = async () => {
@@ -295,7 +338,162 @@ export const StorageView: React.FC<StorageViewProps> = ({
         </div>
       </div>
 
-      {/* 2. S3 Cloud & Samba NAS Offload */}
+      {/* 2. Primary Storage Destination Routing */}
+      <div className="rounded-xl border border-[#222222] bg-[#121212] p-3.5 sm:p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[#222222]">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-[#3B82F6]" />
+            <div>
+              <h4 className="font-semibold text-xs text-white">Primary Storage Destination Routing</h4>
+              <p className="text-[10px] text-zinc-400 font-mono">
+                Select target storage destination for new surveillance recordings and snapshots
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-950/60 text-[#3B82F6] border border-blue-800">
+              Active: {currentTargetMode === 'local' ? 'Local Host Only' : currentTargetMode === 'samba' ? 'Samba / NAS Only' : currentTargetMode === 's3' ? 'S3 Cloud Only' : 'Multi-Destination Mirror'}
+            </span>
+          </div>
+        </div>
+
+        {/* 4 Interactive Route Selector Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2.5">
+          {/* Option 1: Local Only */}
+          <button
+            type="button"
+            disabled={isViewer}
+            onClick={() => handleUpdateTargetMode('local', purgeLocal)}
+            className={`p-3 rounded-xl border text-left flex flex-col justify-between gap-2 transition-all ${
+              currentTargetMode === 'local'
+                ? 'bg-blue-600/15 border-[#3B82F6] text-white shadow-md shadow-blue-500/10 ring-1 ring-[#3B82F6]'
+                : 'bg-[#161616] border-[#222222] text-zinc-300 hover:border-[#333]'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="p-2 rounded-lg bg-[#202020] text-[#3B82F6]">
+                <HardDrive className="h-4 w-4" />
+              </div>
+              {currentTargetMode === 'local' && (
+                <CheckCircle2 className="h-4 w-4 text-[#3B82F6]" />
+              )}
+            </div>
+            <div>
+              <div className="font-bold text-xs">Local Host Only</div>
+              <p className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                Save only to server host disk without remote network offload.
+              </p>
+            </div>
+          </button>
+
+          {/* Option 2: Samba Only */}
+          <button
+            type="button"
+            disabled={isViewer}
+            onClick={() => handleUpdateTargetMode('samba', purgeLocal)}
+            className={`p-3 rounded-xl border text-left flex flex-col justify-between gap-2 transition-all ${
+              currentTargetMode === 'samba'
+                ? 'bg-blue-600/15 border-[#3B82F6] text-white shadow-md shadow-blue-500/10 ring-1 ring-[#3B82F6]'
+                : 'bg-[#161616] border-[#222222] text-zinc-300 hover:border-[#333]'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="p-2 rounded-lg bg-[#202020] text-emerald-400">
+                <Server className="h-4 w-4" />
+              </div>
+              {currentTargetMode === 'samba' && (
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              )}
+            </div>
+            <div>
+              <div className="font-bold text-xs">Samba / NAS Only</div>
+              <p className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                Replicate directly to SMB / Samba NAS storage share.
+              </p>
+            </div>
+          </button>
+
+          {/* Option 3: S3 Cloud Only */}
+          <button
+            type="button"
+            disabled={isViewer}
+            onClick={() => handleUpdateTargetMode('s3', purgeLocal)}
+            className={`p-3 rounded-xl border text-left flex flex-col justify-between gap-2 transition-all ${
+              currentTargetMode === 's3'
+                ? 'bg-blue-600/15 border-[#3B82F6] text-white shadow-md shadow-blue-500/10 ring-1 ring-[#3B82F6]'
+                : 'bg-[#161616] border-[#222222] text-zinc-300 hover:border-[#333]'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="p-2 rounded-lg bg-[#202020] text-amber-400">
+                <Cloud className="h-4 w-4" />
+              </div>
+              {currentTargetMode === 's3' && (
+                <CheckCircle2 className="h-4 w-4 text-amber-400" />
+              )}
+            </div>
+            <div>
+              <div className="font-bold text-xs">S3 Cloud Only</div>
+              <p className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                Upload directly to AWS S3, Cloudflare R2, or MinIO bucket.
+              </p>
+            </div>
+          </button>
+
+          {/* Option 4: Mirror All */}
+          <button
+            type="button"
+            disabled={isViewer}
+            onClick={() => handleUpdateTargetMode('all', purgeLocal)}
+            className={`p-3 rounded-xl border text-left flex flex-col justify-between gap-2 transition-all ${
+              currentTargetMode === 'all'
+                ? 'bg-blue-600/15 border-[#3B82F6] text-white shadow-md shadow-blue-500/10 ring-1 ring-[#3B82F6]'
+                : 'bg-[#161616] border-[#222222] text-zinc-300 hover:border-[#333]'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="p-2 rounded-lg bg-[#202020] text-purple-400">
+                <Layers className="h-4 w-4" />
+              </div>
+              {currentTargetMode === 'all' && (
+                <CheckCircle2 className="h-4 w-4 text-purple-400" />
+              )}
+            </div>
+            <div>
+              <div className="font-bold text-xs">Multi-Destination Mirror</div>
+              <p className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                Retain local files and mirror backups to all configured remotes.
+              </p>
+            </div>
+          </button>
+        </div>
+
+        {/* Purge Local Copy Toggle (when in Samba or S3 Only mode) */}
+        {(currentTargetMode === 'samba' || currentTargetMode === 's3') && !isViewer && (
+          <div className="p-3 rounded-lg bg-[#161618] border border-[#26262a] flex items-center justify-between gap-3 animate-in fade-in">
+            <div className="space-y-0.5">
+              <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                Zero Host Disk Footprint (Purge local cache after remote upload)
+              </span>
+              <p className="text-[10px] text-zinc-400 font-mono">
+                Automatically deletes the temporary local file once successfully verified on {currentTargetMode === 'samba' ? 'Samba NAS' : 'S3 Cloud'}.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={purgeLocal}
+                onChange={(e) => handleUpdateTargetMode(currentTargetMode, e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#3B82F6]"></div>
+            </label>
+          </div>
+        )}
+      </div>
+
+      {/* 3. S3 Cloud & Samba NAS Offload Configuration */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         {/* S3 Cloud */}
         <div className="rounded-xl border border-[#222222] bg-[#121212] p-3 sm:p-4 space-y-3">

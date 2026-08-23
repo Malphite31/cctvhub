@@ -30,8 +30,10 @@ class DVRManager:
         self.recording_start_time: Optional[float] = None
         self._record_thread: Optional[threading.Thread] = None
         self._custom_storage_dir: Optional[Path] = None
+        self._storage_target_mode: str = "local"  # 'local', 'samba', 's3', 'all'
+        self._purge_local_after_upload: bool = False
 
-        # Load persisted custom storage directory if previously configured
+        # Load persisted custom storage directory and storage target mode
         try:
             with get_db() as conn:
                 cursor = conn.cursor()
@@ -41,6 +43,16 @@ class DVRManager:
                     p = Path(row[0])
                     p.mkdir(parents=True, exist_ok=True)
                     self._custom_storage_dir = p
+
+                cursor.execute("SELECT value FROM system_config WHERE key = 'storage_target_mode'")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    self._storage_target_mode = row[0]
+
+                cursor.execute("SELECT value FROM system_config WHERE key = 'purge_local_after_upload'")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    self._purge_local_after_upload = row[0].lower() in ['true', '1', 'yes']
         except Exception:
             pass
 
@@ -54,7 +66,10 @@ class DVRManager:
         return p
 
     def get_snapshots_dir(self) -> Path:
-        p = settings.SNAPSHOTS_DIR
+        if self._custom_storage_dir:
+            p = self._custom_storage_dir / "snapshots"
+        else:
+            p = settings.SNAPSHOTS_DIR
         p.mkdir(parents=True, exist_ok=True)
         return p
 
@@ -105,6 +120,37 @@ class DVRManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    def get_storage_target_mode(self) -> Dict[str, Any]:
+        return {
+            "target_mode": self._storage_target_mode,
+            "purge_local_after_upload": self._purge_local_after_upload
+        }
+
+    def set_storage_target_mode(self, mode: str, purge_local: bool = False) -> Dict[str, Any]:
+        if mode not in ["local", "samba", "s3", "all"]:
+            mode = "local"
+        self._storage_target_mode = mode
+        self._purge_local_after_upload = bool(purge_local)
+        try:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT OR REPLACE INTO system_config (key, value) VALUES ('storage_target_mode', ?)",
+                    (mode,)
+                )
+                cursor.execute(
+                    "INSERT OR REPLACE INTO system_config (key, value) VALUES ('purge_local_after_upload', ?)",
+                    (str(self._purge_local_after_upload),)
+                )
+                conn.commit()
+        except Exception:
+            pass
+        return {
+            "success": True,
+            "target_mode": self._storage_target_mode,
+            "purge_local_after_upload": self._purge_local_after_upload
+        }
+
     def open_storage_folder(self) -> Dict[str, Any]:
         target_dir = self.get_recordings_dir()
         try:
@@ -120,16 +166,38 @@ class DVRManager:
         def _sync_worker():
             if not file_path.exists() or file_path.stat().st_size == 0:
                 return
-            try:
-                if s3_storage.config.get("enabled"):
-                    s3_storage.upload_file(file_path)
-            except Exception:
-                pass
-            try:
-                if samba_storage.config.get("enabled"):
-                    samba_storage.sync_file(file_path)
-            except Exception:
-                pass
+            mode = self._storage_target_mode
+            purge = self._purge_local_after_upload
+
+            if mode == "local":
+                # Local Only - Do not offload to cloud or remote network
+                return
+
+            uploaded_success = False
+
+            if mode in ["s3", "all"]:
+                try:
+                    if s3_storage.config.get("enabled"):
+                        res = s3_storage.upload_file(file_path)
+                        if res.get("success"):
+                            uploaded_success = True
+                except Exception:
+                    pass
+
+            if mode in ["samba", "all"]:
+                try:
+                    if samba_storage.config.get("enabled"):
+                        res = samba_storage.sync_file(file_path)
+                        if res.get("success"):
+                            uploaded_success = True
+                except Exception:
+                    pass
+
+            if purge and mode in ["samba", "s3"] and uploaded_success:
+                try:
+                    file_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
         t = threading.Thread(target=_sync_worker, daemon=True)
         t.start()

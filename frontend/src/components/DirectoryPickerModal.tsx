@@ -38,6 +38,7 @@ export const DirectoryPickerModal: React.FC<DirectoryPickerModalProps> = ({
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [isSubmittingFolder, setIsSubmittingFolder] = useState(false);
+  const wasOpenRef = React.useRef(false);
 
   const fetchDirectory = useCallback(async (path?: string) => {
     setIsLoading(true);
@@ -59,12 +60,13 @@ export const DirectoryPickerModal: React.FC<DirectoryPickerModalProps> = ({
   }, [onShowToast]);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
       setSearchQuery('');
       setIsCreatingFolder(false);
       setNewFolderName('');
       fetchDirectory(initialPath);
     }
+    wasOpenRef.current = isOpen;
   }, [isOpen, initialPath, fetchDirectory]);
 
   if (!isOpen) return null;

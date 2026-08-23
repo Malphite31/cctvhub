@@ -198,6 +198,7 @@ def get_storage_location():
     rec_size_mb = round(get_dir_size(rec_dir) / (1024 * 1024), 2)
     snap_size_mb = round(get_dir_size(snap_dir) / (1024 * 1024), 2)
     faces_size_mb = round(get_dir_size(faces_dir) / (1024 * 1024), 2)
+    target_info = dvr_manager.get_storage_target_mode()
 
     return {
         "recordings_path": str(rec_dir),
@@ -209,7 +210,9 @@ def get_storage_location():
         "recordings_mb": rec_size_mb,
         "snapshots_mb": snap_size_mb,
         "faces_mb": faces_size_mb,
-        "is_writable": os.access(str(rec_dir), os.W_OK)
+        "is_writable": os.access(str(rec_dir), os.W_OK),
+        "target_mode": target_info.get("target_mode", "local"),
+        "purge_local_after_upload": target_info.get("purge_local_after_upload", False)
     }
 
 @router.post("/location")
@@ -223,6 +226,13 @@ def set_storage_location(data: Dict[str, str] = Body(...)):
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Invalid path"))
     return result
+
+@router.post("/target-mode")
+def set_storage_target_mode(data: Dict[str, Any] = Body(...)):
+    """Configure primary storage destination routing (local, samba, s3, all)."""
+    target_mode = data.get("target_mode", "local")
+    purge_local = bool(data.get("purge_local_after_upload", False))
+    return dvr_manager.set_storage_target_mode(target_mode, purge_local)
 
 @router.post("/open-folder")
 def open_folder():

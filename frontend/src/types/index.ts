@@ -137,6 +137,8 @@ export interface StorageLocationInfo {
   snapshots_mb: number;
   faces_mb: number;
   is_writable: boolean;
+  target_mode?: 'local' | 'samba' | 's3' | 'all';
+  purge_local_after_upload?: boolean;
 }
 
 export interface SurveillanceEvent {
