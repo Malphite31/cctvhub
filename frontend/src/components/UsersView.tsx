@@ -300,7 +300,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ onShowToast }) => {
             <button
               type="submit"
               disabled={isCreating}
-              className="px-4 py-2 bg-[#3B82F6] hover:bg-blue-600 text-white font-mono font-medium rounded-xl text-xs flex items-center gap-2 shadow-lg transition-colors disabled:opacity-50"
+              className="w-full sm:w-auto px-4 py-2.5 bg-[#3B82F6] hover:bg-blue-600 text-white font-mono font-medium rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-colors disabled:opacity-50"
             >
               <Plus className="h-4 w-4" />
               <span>{isCreating ? 'Creating Account...' : 'Add Family Account'}</span>
@@ -310,7 +310,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ onShowToast }) => {
       </div>
 
       {/* Existing Registered Accounts List */}
-      <div className="rounded-2xl border border-[#222222] bg-[#121212] p-4 sm:p-5 space-y-3 shadow-sm">
+      <div className="rounded-2xl border border-[#222222] bg-[#121212] p-3.5 sm:p-5 space-y-3 shadow-sm">
         <div className="flex items-center justify-between pb-2 border-b border-[#222222]">
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-emerald-400" />
@@ -325,16 +325,16 @@ export const UsersView: React.FC<UsersViewProps> = ({ onShowToast }) => {
             Loading user accounts...
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5 sm:gap-3">
             {usersList.map((u) => {
               const isAdmin = u.role === 'admin';
               return (
                 <div
                   key={u.username}
-                  className="p-3.5 rounded-xl bg-[#18181c] border border-[#26262a] hover:border-zinc-700 flex items-center justify-between gap-3 transition-colors"
+                  className="p-3 sm:p-3.5 rounded-xl bg-[#18181c] border border-[#26262a] hover:border-zinc-700 flex items-center justify-between gap-2.5 sm:gap-3 transition-colors"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`p-2.5 rounded-full shrink-0 ${
+                  <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                    <div className={`p-2 sm:p-2.5 rounded-full shrink-0 ${
                       isAdmin
                         ? 'bg-blue-950/80 text-[#3B82F6] border border-blue-800/60'
                         : 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
@@ -342,8 +342,8 @@ export const UsersView: React.FC<UsersViewProps> = ({ onShowToast }) => {
                       <User className="h-4 w-4" />
                     </div>
 
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                         <span className="font-semibold text-white font-mono text-xs truncate">
                           {u.username}
                         </span>
@@ -358,7 +358,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ onShowToast }) => {
                       <p className="text-[11px] text-zinc-400 truncate mt-0.5">
                         {u.display_name}
                       </p>
-                      <p className="text-[10px] text-zinc-500 font-mono mt-1">
+                      <p className="text-[10px] text-zinc-500 font-mono mt-1 truncate">
                         Created: {new Date(u.created_at * 1000).toLocaleDateString()}
                         {u.last_login ? ` • Last active: ${new Date(u.last_login * 1000).toLocaleTimeString()}` : ' • No logins yet'}
                       </p>

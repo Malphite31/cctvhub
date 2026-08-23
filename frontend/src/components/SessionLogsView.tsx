@@ -136,24 +136,24 @@ export const SessionLogsView: React.FC<SessionLogsViewProps> = ({ onShowToast })
       </div>
 
       {/* Filter / Search Bar */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-zinc-500" />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
           <input
             type="text"
-            placeholder="Search by user, IP, device, or network location..."
+            placeholder="Search by user, IP, device, or location..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-[#121212] border border-[#222222] rounded-xl pl-9 pr-3 py-2 text-white text-xs focus:border-[#3B82F6] focus:outline-none transition-colors font-mono"
           />
         </div>
 
-        <div className="flex items-center gap-1.5 bg-[#121212] border border-[#222222] p-1 rounded-xl">
+        <div className="flex items-center gap-1 bg-[#121212] border border-[#222222] p-1 rounded-xl overflow-x-auto no-scrollbar shrink-0">
           {(['all', 'active', 'ended'] as const).map((mode) => (
             <button
               key={mode}
               onClick={() => setFilterStatus(mode)}
-              className={`px-3 py-1 rounded-lg text-xs font-mono capitalize transition-colors ${
+              className={`px-3 py-1 rounded-lg text-xs font-mono capitalize whitespace-nowrap transition-colors shrink-0 ${
                 filterStatus === mode
                   ? 'bg-[#3B82F6] text-white font-semibold shadow-xs'
                   : 'text-zinc-400 hover:text-zinc-200'
@@ -166,7 +166,7 @@ export const SessionLogsView: React.FC<SessionLogsViewProps> = ({ onShowToast })
       </div>
 
       {/* Sessions Activity List */}
-      <div className="rounded-2xl border border-[#222222] bg-[#121212] p-4 sm:p-5 space-y-3 shadow-sm">
+      <div className="rounded-2xl border border-[#222222] bg-[#121212] p-3.5 sm:p-5 space-y-3 shadow-sm">
         <div className="flex items-center justify-between pb-2 border-b border-[#222222]">
           <h2 className="font-semibold text-white text-xs uppercase tracking-wider font-mono">
             Recorded Activity ({filteredSessions.length})
@@ -189,16 +189,16 @@ export const SessionLogsView: React.FC<SessionLogsViewProps> = ({ onShowToast })
               return (
                 <div
                   key={sess.session_id || sess.id}
-                  className={`p-3.5 rounded-xl border transition-colors ${
+                  className={`p-3 sm:p-3.5 rounded-xl border transition-colors ${
                     isActive
                       ? 'bg-emerald-950/20 border-emerald-800/60 shadow-sm'
                       : 'bg-[#18181c] border-[#26262a]'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-2.5 sm:gap-3">
                     {/* Left: Device & User Info */}
-                    <div className="flex items-start gap-3 min-w-0">
-                      <div className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${
+                    <div className="flex items-start gap-2.5 sm:gap-3 min-w-0 flex-1">
+                      <div className={`p-2 sm:p-2.5 rounded-xl shrink-0 mt-0.5 ${
                         isActive
                           ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                           : 'bg-zinc-800/80 text-zinc-400 border border-zinc-700'
@@ -206,13 +206,13 @@ export const SessionLogsView: React.FC<SessionLogsViewProps> = ({ onShowToast })
                         {isMobile ? <Smartphone className="h-4 w-4" /> : <Laptop className="h-4 w-4" />}
                       </div>
 
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-white font-mono text-xs">
+                      <div className="space-y-1 min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                          <span className="font-bold text-white font-mono text-xs truncate">
                             {sess.username}
                           </span>
                           {sess.display_name && (
-                            <span className="text-zinc-400 text-xs">({sess.display_name})</span>
+                            <span className="text-zinc-400 text-xs truncate">({sess.display_name})</span>
                           )}
                           <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono uppercase font-bold tracking-wider ${
                             sess.role === 'admin'
@@ -223,21 +223,21 @@ export const SessionLogsView: React.FC<SessionLogsViewProps> = ({ onShowToast })
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-2 text-[11px] text-zinc-400 font-mono flex-wrap">
-                          <span className="text-zinc-200">{sess.device_info}</span>
+                        <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] text-zinc-400 font-mono flex-wrap">
+                          <span className="text-zinc-200 truncate">{sess.device_info}</span>
                           <span>•</span>
-                          <span className="text-[#3B82F6] flex items-center gap-1">
+                          <span className="text-[#3B82F6] flex items-center gap-1 shrink-0">
                             <Globe className="h-3 w-3" />
                             {sess.ip_address}
                           </span>
                           <span>•</span>
-                          <span className="text-zinc-500 font-medium">[{sess.location}]</span>
+                          <span className="text-zinc-500 font-medium truncate">[{sess.location}]</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Right: Status Badges & Timestamps */}
-                    <div className="text-right shrink-0 space-y-1.5 sm:min-w-[170px]">
+                    <div className="pt-2 sm:pt-0 border-t sm:border-t-0 border-[#26262a] sm:border-transparent flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-1.5 text-left sm:text-right shrink-0 sm:min-w-[170px]">
                       {isActive ? (
                         <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 font-mono text-[10px] font-bold animate-pulse">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />

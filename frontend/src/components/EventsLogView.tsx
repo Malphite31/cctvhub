@@ -274,7 +274,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
     <div className="flex-1 min-h-0 flex flex-col gap-2 sm:gap-3 select-none text-xs">
       {/* 1. Top Header & Action Controls */}
       <div className="rounded-xl border border-[#222222] bg-[#121212] p-3 sm:p-4 space-y-2.5 sm:space-y-3 shrink-0">
-        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 pb-2 border-b border-[#222222]">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 pb-2 border-b border-[#222222]">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg bg-[#3B82F6]/15 border border-[#3B82F6]/30 text-[#3B82F6] shrink-0">
               <Bell className="h-4 w-4" />
@@ -289,11 +289,11 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="grid grid-cols-4 sm:flex items-center gap-1.5 w-full sm:w-auto">
             {/* Export CSV Button */}
             <button
               onClick={handleExportCSV}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-white border border-[#333] transition-colors text-[11px] font-mono"
+              className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-white border border-[#333] transition-colors text-[11px] font-mono"
               title="Download CSV log audit trail"
             >
               <Download className="h-3 w-3 text-emerald-400" />
@@ -303,7 +303,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
             {/* Export JSON Button */}
             <button
               onClick={handleExportJSON}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-white border border-[#333] transition-colors text-[11px] font-mono"
+              className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-white border border-[#333] transition-colors text-[11px] font-mono"
               title="Download JSON log archive"
             >
               <FileJson className="h-3 w-3 text-[#3B82F6]" />
@@ -315,7 +315,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
               <button
                 onClick={() => setShowClearModal(true)}
                 disabled={events.length === 0}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-rose-950/60 text-zinc-300 hover:text-rose-300 border border-[#333] hover:border-rose-900/60 transition-colors text-[11px] font-mono disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-rose-950/60 text-zinc-300 hover:text-rose-300 border border-[#333] hover:border-rose-900/60 transition-colors text-[11px] font-mono disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Clear all logged events"
               >
                 <Trash2 className="h-3 w-3 text-rose-400" />
@@ -327,7 +327,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
             {/* Refresh Button */}
             <button
               onClick={onRefresh}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-white border border-[#333] transition-colors text-[11px] font-mono"
+              className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-white border border-[#333] transition-colors text-[11px] font-mono"
               title="Refresh log feed"
             >
               <RefreshCw className="h-3 w-3 text-[#3B82F6]" />
@@ -575,8 +575,8 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
                   }`}
                 >
                   {/* Top Line: Checkbox + Timestamp + Classification + Camera */}
-                  <div className="flex items-center justify-between gap-1.5">
-                    <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-1.5 pb-1 border-b border-[#202020]">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       {!isViewer && (
                         <button
                           onClick={(e) => handleToggleSelectOne(e, ev.id)}
@@ -604,7 +604,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
                   </div>
 
                   {/* Middle Line: Thumbnail + Title & Details */}
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2.5 py-0.5">
                     {(ev.thumbnail_url || ev.thumbnail) && (
                       <img
                         src={ev.thumbnail_url || ev.thumbnail}
@@ -633,7 +633,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
                           e.stopPropagation();
                           if (onOpenEvent) onOpenEvent(ev);
                         }}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#202020] hover:bg-[#282828] text-zinc-200 text-[10px]"
+                        className="flex items-center gap-1 px-2 py-1 rounded bg-[#202020] hover:bg-[#282828] text-zinc-200 text-[10px]"
                       >
                         <Eye className="h-3 w-3 text-[#3B82F6]" />
                         <span>Inspect</span>
@@ -641,7 +641,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
 
                       <button
                         onClick={(e) => handleDownloadRowMediaOrJSON(e, ev)}
-                        className="p-1 rounded bg-[#202020] hover:bg-[#282828] text-zinc-300"
+                        className="p-1.5 rounded bg-[#202020] hover:bg-[#282828] text-zinc-300"
                         title="Download Asset"
                       >
                         <Download className="h-3 w-3 text-emerald-400" />
@@ -653,7 +653,7 @@ export const EventsLogView: React.FC<EventsLogViewProps> = ({
                             e.stopPropagation();
                             setEventToDelete(ev.id);
                           }}
-                          className="p-1 rounded bg-[#202020] hover:bg-rose-950/60 text-zinc-400 hover:text-rose-400"
+                          className="p-1.5 rounded bg-[#202020] hover:bg-rose-950/60 text-zinc-400 hover:text-rose-400"
                           title="Delete"
                         >
                           <Trash2 className="h-3 w-3" />

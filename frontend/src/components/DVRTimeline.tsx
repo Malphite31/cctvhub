@@ -302,8 +302,8 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
         </div>
 
         {/* Multi-Select Action Bar */}
-        <div className="flex items-center justify-between pt-2 border-t border-[#222222] text-xs font-mono">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2 border-t border-[#222222] text-xs font-mono">
+          <div className="flex items-center justify-between sm:justify-start gap-3">
             <button
               onClick={activeTab === 'clips' ? handleToggleSelectAllClips : handleToggleSelectAllSnapshots}
               className="flex items-center gap-1.5 text-zinc-400 hover:text-white transition-colors"
@@ -331,7 +331,7 @@ export const DVRTimeline: React.FC<DVRTimelineProps> = ({
             <div className="flex items-center gap-2 animate-in fade-in duration-150">
               <button
                 onClick={() => setShowBatchDeleteModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-medium transition-colors shadow-lg shadow-rose-900/30"
+                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-medium transition-colors shadow-lg shadow-rose-900/30"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 <span>Delete Selected ({currentSelectedCount})</span>

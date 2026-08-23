@@ -251,7 +251,7 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
                       e.stopPropagation();
                       setProfileToDelete(person);
                     }}
-                    className="absolute top-3.5 right-3.5 z-20 p-1.5 bg-black/85 hover:bg-rose-600 text-zinc-400 hover:text-white rounded-lg border border-[#333] opacity-0 group-hover:opacity-100 transition-all shadow-xl"
+                    className="absolute top-3.5 right-3.5 z-20 p-1.5 bg-black/85 hover:bg-rose-600 text-zinc-400 hover:text-white rounded-lg border border-[#333] opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all shadow-xl"
                     title="Remove Profile"
                   >
                     <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
