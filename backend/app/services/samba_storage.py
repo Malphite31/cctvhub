@@ -79,7 +79,10 @@ class SambaStorageService:
                     smbclient.reset_connection_cache()
                 except Exception:
                     pass
-                smbclient.register_session(host, username=user, password=password, timeout=10)
+                try:
+                    smbclient.register_session(host, username=user, password=password, connection_timeout=10)
+                except TypeError:
+                    smbclient.register_session(host, username=user, password=password)
                 unc_path = f"\\\\{host}\\{share}"
                 smbclient.listdir(unc_path)
                 return {
@@ -141,13 +144,16 @@ class SambaStorageService:
                     host = parts[0]
                 if not share:
                     share = parts[1]
-            mount_path = ""
+                mount_path = ""
 
         # Option A: Direct SMB network transfer via smbclient
         if host and share:
             try:
                 import smbclient
-                smbclient.register_session(host, username=user, password=password, timeout=20)
+                try:
+                    smbclient.register_session(host, username=user, password=password, connection_timeout=20)
+                except TypeError:
+                    smbclient.register_session(host, username=user, password=password)
                 unc_dest = f"\\\\{host}\\{share}\\{file_path.name}"
                 with open(file_path, "rb") as local_f:
                     with smbclient.open_file(unc_dest, mode="wb") as smb_f:
