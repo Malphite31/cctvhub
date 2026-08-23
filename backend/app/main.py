@@ -15,22 +15,46 @@ from .core.database import init_db, list_configured_cameras
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Initialize DB and workers
-    init_db()
-    loop = asyncio.get_running_loop()
-    audio_worker.set_loop(loop)
+    try:
+        init_db()
+    except Exception:
+        pass
+
+    try:
+        loop = asyncio.get_running_loop()
+        audio_worker.set_loop(loop)
+    except Exception:
+        pass
+
     try:
         configured = list_configured_cameras()
         for cam in configured:
             camera_manager.get_worker(cam["id"], source=cam.get("source"))
     except Exception:
         pass
-    audio_worker.start()
+
+    try:
+        audio_worker.start()
+    except Exception:
+        pass
+
     yield
+
     # Shutdown
-    with camera_manager.lock:
-        for worker in list(camera_manager.workers.values()):
-            worker.stop()
-    audio_worker.stop()
+    try:
+        with camera_manager.lock:
+            for worker in list(camera_manager.workers.values()):
+                try:
+                    worker.stop()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    try:
+        audio_worker.stop()
+    except Exception:
+        pass
 
 app = FastAPI(
     title=settings.APP_NAME,
