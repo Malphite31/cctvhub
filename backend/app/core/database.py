@@ -477,19 +477,22 @@ def delete_all_configured_cameras() -> bool:
         conn.commit()
         return True
 
-def get_active_camera() -> str:
+def get_active_camera() -> Optional[str]:
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT value FROM system_config WHERE key = 'active_camera'")
         row = cursor.fetchone()
         if row and row[0]:
-            return str(row[0])
+            clean_val = str(row[0])
+            cursor.execute("SELECT id FROM cameras WHERE id = ? OR source = ?", (clean_val, clean_val))
+            if cursor.fetchone():
+                return clean_val
         # Fallback to first configured camera in DB if available
         cursor.execute("SELECT id FROM cameras ORDER BY id ASC LIMIT 1")
         cam_row = cursor.fetchone()
         if cam_row and cam_row[0]:
             return str(cam_row[0])
-        return "0"
+        return None
 
 def set_active_camera(camera_id: str) -> str:
     clean_id = str(camera_id).strip()

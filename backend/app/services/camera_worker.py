@@ -576,32 +576,37 @@ class MultiCameraManager:
         self._last_scan_time = 0
         self._active_device_id: Optional[str] = None
 
-    def get_active_device(self) -> str:
+    def get_active_device(self) -> Optional[str]:
         with self.lock:
             if self._active_device_id:
                 return self._active_device_id
         try:
             from ..core.database import get_active_camera
             active_id = get_active_camera()
-            with self.lock:
-                self._active_device_id = str(active_id)
-            return str(active_id)
+            if active_id:
+                with self.lock:
+                    self._active_device_id = str(active_id)
+                return str(active_id)
+            return None
         except Exception:
-            return "0"
+            return None
 
-    def set_active_device(self, device_id: str) -> str:
-        clean_id = str(device_id).strip()
+    def set_active_device(self, device_id: Optional[str]) -> Optional[str]:
+        clean_id = str(device_id).strip() if device_id is not None else None
         with self.lock:
             self._active_device_id = clean_id
-        try:
-            from ..core.database import set_active_camera
-            set_active_camera(clean_id)
-        except Exception:
-            pass
+        if clean_id:
+            try:
+                from ..core.database import set_active_camera
+                set_active_camera(clean_id)
+            except Exception:
+                pass
         return clean_id
 
-    def get_active_worker(self) -> CameraWorker:
+    def get_active_worker(self) -> Optional[CameraWorker]:
         active_id = self.get_active_device()
+        if not active_id:
+            return None
         return self.get_worker(active_id)
 
     def _normalize_key(self, dev_id: Any) -> str:
@@ -615,7 +620,7 @@ class MultiCameraManager:
                     return k
         return s
 
-    def restart_camera(self, device_id: str) -> CameraWorker:
+    def restart_camera(self, device_id: str) -> Optional[CameraWorker]:
         """Forcefully re-initializes and restarts the camera worker for the given device ID."""
         canonical_key = self._normalize_key(device_id)
         with self.lock:
@@ -625,38 +630,39 @@ class MultiCameraManager:
                 return worker
             else:
                 worker = self.get_worker(canonical_key)
-                worker.restart()
+                if worker:
+                    worker.restart()
                 return worker
 
-    def get_worker(self, device_id: str, source: Optional[str] = None) -> CameraWorker:
+    def get_worker(self, device_id: Optional[str], source: Optional[str] = None) -> Optional[CameraWorker]:
+        if not device_id:
+            return None
         canonical_key = self._normalize_key(device_id)
         with self.lock:
-            if canonical_key not in self.workers:
-                resolved_source = source
-                if resolved_source is None:
-                    try:
-                        cam_cfg = get_configured_camera(canonical_key)
-                        if cam_cfg and cam_cfg.get("source"):
-                            resolved_source = cam_cfg["source"]
-                        else:
-                            resolved_source = canonical_key
-                    except Exception:
-                        resolved_source = canonical_key
-                worker = CameraWorker(device=canonical_key, source=resolved_source)
-                worker.start()
-                self.workers[canonical_key] = worker
-            elif source is not None and str(self.workers[canonical_key].source) != str(source):
-                # Source updated: restart worker with new source
-                self.workers[canonical_key].stop()
-                worker = CameraWorker(device=canonical_key, source=source)
-                worker.start()
-                self.workers[canonical_key] = worker
-            else:
-                # Ensure thread is alive
+            if canonical_key in self.workers:
                 w = self.workers[canonical_key]
-                if not w.is_running or not (w.worker_thread and w.worker_thread.is_alive()):
+                if w.is_running and not (w.worker_thread and w.worker_thread.is_alive()):
                     w.restart()
-            return self.workers[canonical_key]
+                return w
+
+            # Not in self.workers. Check if camera is configured in database
+            resolved_source = source
+            if resolved_source is None:
+                try:
+                    cam_cfg = get_configured_camera(canonical_key)
+                    if cam_cfg and cam_cfg.get("source"):
+                        resolved_source = cam_cfg["source"]
+                except Exception:
+                    pass
+
+            # If not in database and no explicit source provided, DO NOT start hardware capture!
+            if resolved_source is None:
+                return None
+
+            worker = CameraWorker(device=canonical_key, source=resolved_source)
+            worker.start()
+            self.workers[canonical_key] = worker
+            return worker
 
     def probe_camera_resolutions(self, source_val: Any) -> List[Dict[str, Any]]:
         """
@@ -998,6 +1004,23 @@ camera_manager = MultiCameraManager()
 # Primary dynamic worker proxy for single-cam routes and background workers
 class _CameraWorkerProxy:
     def __getattr__(self, name):
-        return getattr(camera_manager.get_active_worker(), name)
+        w = camera_manager.get_active_worker()
+        if w is None:
+            if name in ("get_jpeg_bytes", "get_current_frame", "read"):
+                return lambda *args, **kwargs: (False, None)
+            if name in ("actual_fps", "requested_fps"):
+                return 0
+            if name in ("is_running", "is_hardware_active", "is_paused"):
+                return False
+            if name in ("resolution",):
+                return "1920x1080"
+            if name in ("quality_mode",):
+                return "sd"
+            if name in ("jpeg_quality",):
+                return 52
+            if name in ("source", "device"):
+                return "0"
+            return lambda *args, **kwargs: None
+        return getattr(w, name)
 
 camera_worker = _CameraWorkerProxy()

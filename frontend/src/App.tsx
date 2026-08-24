@@ -164,6 +164,9 @@ export const App: React.FC = () => {
             setActiveDevice(firstDev);
             localStorage.setItem('cctv_active_device', firstDev);
           }
+        } else {
+          setActiveDevice('');
+          localStorage.removeItem('cctv_active_device');
         }
       }
     } catch {}
@@ -316,7 +319,8 @@ export const App: React.FC = () => {
   }, [isFaceRecognitionEnabled, activeTab]);
 
   const fetchTrackerSettings = () => {
-    fetch(`/api/stream/tracker-settings?dev=${encodeURIComponent(activeDevice || '0')}`)
+    if (!activeDevice) return;
+    fetch(`/api/stream/tracker-settings?dev=${encodeURIComponent(activeDevice)}`)
       .then((res) => res.json())
       .then((data) => {
         const settingsData = data.settings || data;

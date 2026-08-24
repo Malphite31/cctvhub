@@ -16,19 +16,19 @@ router = APIRouter()
 async def get_stream_config():
     """Returns streaming endpoints, audio status, and current active stream info."""
     active_id = camera_manager.get_active_device()
-    worker = camera_manager.get_worker(active_id)
+    worker = camera_manager.get_worker(active_id) if active_id else None
     return {
         "stream_name": settings.GO2RTC_STREAM_NAME,
         "go2rtc_url": settings.GO2RTC_API_URL,
-        "webrtc_url": f"{settings.GO2RTC_API_URL}/api/webrtc?src={settings.GO2RTC_STREAM_NAME}",
-        "live_mjpeg_url": f"/api/stream/live?dev={active_id}",
+        "webrtc_url": f"{settings.GO2RTC_API_URL}/api/webrtc?src={settings.GO2RTC_STREAM_NAME}" if active_id else "",
+        "live_mjpeg_url": f"/api/stream/live?dev={active_id}" if active_id else "",
         "audio_ws_url": "/api/stream/audio/ws",
         "talk_ws_url": "/api/stream/talk/ws",
-        "active_device": str(active_id),
-        "fps": worker.actual_fps,
-        "resolution": worker.resolution,
-        "quality_mode": getattr(worker, "quality_mode", "sd"),
-        "jpeg_quality": getattr(worker, "jpeg_quality", 52),
+        "active_device": str(active_id) if active_id else None,
+        "fps": worker.actual_fps if worker else 0,
+        "resolution": worker.resolution if worker else "1920x1080",
+        "quality_mode": getattr(worker, "quality_mode", "sd") if worker else "sd",
+        "jpeg_quality": getattr(worker, "jpeg_quality", 52) if worker else 52,
         "audio_enabled": True,
         "active_audio_device": audio_worker.device_index,
         "active_speaker_device": audio_speaker.output_device,
@@ -38,8 +38,10 @@ async def get_stream_config():
 @router.post("/switch-camera")
 def switch_camera(device: str = Query(..., description="Camera device index (e.g. 0, 1, 2)")):
     """Switch active video camera input device and persist setting."""
-    camera_manager.set_active_device(device)
     worker = camera_manager.get_worker(device)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Camera not found in configured devices")
+    camera_manager.set_active_device(device)
     if not worker.is_running:
         worker.start()
     return {
@@ -59,20 +61,22 @@ class QualityPayload(BaseModel):
 def get_stream_quality(dev: Optional[str] = Query(None, description="Camera device index")):
     """Get active transmission quality mode (SD/HD), resolution, and JPEG quality."""
     target_dev = str(dev) if dev is not None else camera_manager.get_active_device()
-    worker = camera_manager.get_worker(target_dev)
+    worker = camera_manager.get_worker(target_dev) if target_dev else None
     return {
         "device": target_dev,
-        "quality_mode": getattr(worker, "quality_mode", "sd"),
-        "resolution": worker.resolution,
-        "jpeg_quality": getattr(worker, "jpeg_quality", 52),
-        "fps": worker.actual_fps or worker.requested_fps
+        "quality_mode": getattr(worker, "quality_mode", "sd") if worker else "sd",
+        "resolution": worker.resolution if worker else "1920x1080",
+        "jpeg_quality": getattr(worker, "jpeg_quality", 52) if worker else 52,
+        "fps": (worker.actual_fps or worker.requested_fps) if worker else 0
     }
 
 @router.post("/quality")
 def set_stream_quality(payload: QualityPayload):
     """Switch stream transmission quality mode (SD / HD) in real-time to save bandwidth."""
     target_dev = str(payload.dev) if payload.dev is not None else camera_manager.get_active_device()
-    worker = camera_manager.get_worker(target_dev)
+    worker = camera_manager.get_worker(target_dev) if target_dev else None
+    if not worker:
+        return {"status": "error", "detail": "Camera not active"}
     return worker.set_quality_mode(payload.mode)
 
 @router.post("/resolution")
@@ -85,6 +89,8 @@ def set_resolution(
 ):
     """Set camera resolution and framerate in real-time."""
     worker = camera_manager.get_worker(dev)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Camera not active")
     return worker.set_resolution(width, height, fps, quality_mode=mode)
 
 @router.post("/reconnect")
@@ -92,7 +98,11 @@ def set_resolution(
 def restart_camera_hardware(dev: Optional[str] = Query(None, description="Camera device index")):
     """Forcefully restarts camera capture hardware and resets video stream."""
     target_dev = str(dev) if dev is not None else camera_manager.get_active_device()
+    if not target_dev:
+        raise HTTPException(status_code=404, detail="No active camera to restart")
     worker = camera_manager.restart_camera(target_dev)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Camera not found")
     return {
         "status": "success",
         "device": target_dev,
@@ -106,8 +116,9 @@ def restart_camera_hardware(dev: Optional[str] = Query(None, description="Camera
 def pause_camera_stream(dev: Optional[str] = Query(None, description="Camera device index")):
     """Pauses the camera worker, deactivates USB/hardware capture, and turns off webcam sensor."""
     target_dev = str(dev) if dev is not None else camera_manager.get_active_device()
-    worker = camera_manager.get_worker(target_dev)
-    worker.pause()
+    worker = camera_manager.get_worker(target_dev) if target_dev else None
+    if worker:
+        worker.pause()
     return {
         "status": "paused",
         "device": target_dev,
@@ -120,13 +131,14 @@ def pause_camera_stream(dev: Optional[str] = Query(None, description="Camera dev
 def resume_camera_stream(dev: Optional[str] = Query(None, description="Camera device index")):
     """Resumes the camera worker, reactivates hardware capture, and resumes live stream."""
     target_dev = str(dev) if dev is not None else camera_manager.get_active_device()
-    worker = camera_manager.get_worker(target_dev)
-    worker.resume()
+    worker = camera_manager.get_worker(target_dev) if target_dev else None
+    if worker:
+        worker.resume()
     return {
         "status": "active",
         "device": target_dev,
         "is_paused": False,
-        "is_hardware_active": worker.is_hardware_active
+        "is_hardware_active": worker.is_hardware_active if worker else False
     }
 
 from typing import Optional
@@ -147,7 +159,22 @@ class AdjustmentPayload(BaseModel):
 @router.get("/adjustments")
 def get_adjustments(dev: str = Query("0", description="Camera device index")):
     """Get camera adjustments for flip, crop, zoom, rotation, and color tuning."""
+    from ..core.database import get_camera_adjustments
+    adj = get_camera_adjustments(dev)
     worker = camera_manager.get_worker(dev)
+    if not worker:
+        return {
+            "device": dev,
+            "flip_h": adj.get("flip_h", False),
+            "flip_v": adj.get("flip_v", False),
+            "rotation": adj.get("rotation", 0),
+            "zoom": adj.get("zoom", 1.0),
+            "pan_x": adj.get("pan_x", 0.0),
+            "pan_y": adj.get("pan_y", 0.0),
+            "brightness": adj.get("brightness", 50),
+            "contrast": adj.get("contrast", 50),
+            "saturation": adj.get("saturation", 50)
+        }
     return {
         "device": dev,
         "flip_h": worker.flip_h,
@@ -171,32 +198,38 @@ def set_adjustments(
     worker = camera_manager.get_worker(payload.dev)
     updates = {}
     if payload.flip_h is not None:
-        worker.flip_h = payload.flip_h
+        if worker: worker.flip_h = payload.flip_h
         updates["flip_h"] = payload.flip_h
     if payload.flip_v is not None:
-        worker.flip_v = payload.flip_v
+        if worker: worker.flip_v = payload.flip_v
         updates["flip_v"] = payload.flip_v
     if payload.rotation is not None:
-        worker.rotation = payload.rotation
+        if worker: worker.rotation = payload.rotation
         updates["rotation"] = payload.rotation
     if payload.zoom is not None:
-        worker.zoom = max(1.0, min(3.0, float(payload.zoom)))
-        updates["zoom"] = worker.zoom
+        val = max(1.0, min(3.0, float(payload.zoom)))
+        if worker: worker.zoom = val
+        updates["zoom"] = val
     if payload.pan_x is not None:
-        worker.pan_x = max(-50.0, min(50.0, float(payload.pan_x)))
-        updates["pan_x"] = worker.pan_x
+        val = max(-50.0, min(50.0, float(payload.pan_x)))
+        if worker: worker.pan_x = val
+        updates["pan_x"] = val
     if payload.pan_y is not None:
-        worker.pan_y = max(-50.0, min(50.0, float(payload.pan_y)))
-        updates["pan_y"] = worker.pan_y
+        val = max(-50.0, min(50.0, float(payload.pan_y)))
+        if worker: worker.pan_y = val
+        updates["pan_y"] = val
     if payload.brightness is not None:
-        worker.brightness = max(0, min(100, int(payload.brightness)))
-        updates["brightness"] = worker.brightness
+        val = max(0, min(100, int(payload.brightness)))
+        if worker: worker.brightness = val
+        updates["brightness"] = val
     if payload.contrast is not None:
-        worker.contrast = max(0, min(100, int(payload.contrast)))
-        updates["contrast"] = worker.contrast
+        val = max(0, min(100, int(payload.contrast)))
+        if worker: worker.contrast = val
+        updates["contrast"] = val
     if payload.saturation is not None:
-        worker.saturation = max(0, min(100, int(payload.saturation)))
-        updates["saturation"] = worker.saturation
+        val = max(0, min(100, int(payload.saturation)))
+        if worker: worker.saturation = val
+        updates["saturation"] = val
 
     if updates:
         try:
@@ -207,15 +240,15 @@ def set_adjustments(
     return {
         "status": "success",
         "device": payload.dev,
-        "flip_h": worker.flip_h,
-        "flip_v": worker.flip_v,
-        "rotation": worker.rotation,
-        "zoom": worker.zoom,
-        "pan_x": worker.pan_x,
-        "pan_y": worker.pan_y,
-        "brightness": worker.brightness,
-        "contrast": worker.contrast,
-        "saturation": worker.saturation
+        "flip_h": worker.flip_h if worker else updates.get("flip_h", False),
+        "flip_v": worker.flip_v if worker else updates.get("flip_v", False),
+        "rotation": worker.rotation if worker else updates.get("rotation", 0),
+        "zoom": worker.zoom if worker else updates.get("zoom", 1.0),
+        "pan_x": worker.pan_x if worker else updates.get("pan_x", 0.0),
+        "pan_y": worker.pan_y if worker else updates.get("pan_y", 0.0),
+        "brightness": worker.brightness if worker else updates.get("brightness", 50),
+        "contrast": worker.contrast if worker else updates.get("contrast", 50),
+        "saturation": worker.saturation if worker else updates.get("saturation", 50)
     }
 
 @router.post("/switch-audio")
@@ -233,7 +266,11 @@ def switch_audio(
 async def live_stream(dev: Optional[str] = Query(None, description="Camera device index")):
     """Multi-camera direct 60 FPS video stream."""
     target_dev = str(dev) if dev is not None else camera_manager.get_active_device()
+    if not target_dev:
+        raise HTTPException(status_code=404, detail="No camera configured")
     worker = camera_manager.get_worker(target_dev)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Camera not configured")
     if not worker.is_running:
         worker.start()
 
@@ -259,7 +296,11 @@ async def live_stream(dev: Optional[str] = Query(None, description="Camera devic
 def get_single_frame(dev: Optional[str] = Query(None, description="Camera device index")):
     """Get single latest JPEG frame from camera worker for instant preview / frozen pause."""
     target_dev = str(dev) if dev is not None else camera_manager.get_active_device()
+    if not target_dev:
+        raise HTTPException(status_code=404, detail="No camera configured")
     worker = camera_manager.get_worker(target_dev)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Camera not configured")
     jpeg = worker.get_latest_jpeg()
     if jpeg is None:
         raise HTTPException(status_code=503, detail="Camera signal not ready")
