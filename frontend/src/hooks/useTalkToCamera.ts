@@ -15,9 +15,11 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const scriptNodeRef = useRef<ScriptProcessorNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const isTalkingRef = useRef(false);
+  const pcmQueueRef = useRef<ArrayBuffer[]>([]);
 
   // Fetch available speaker output devices from backend
   const fetchSpeakerDevices = useCallback(async () => {
@@ -39,7 +41,7 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
     fetchSpeakerDevices();
   }, [fetchSpeakerDevices]);
 
-  // Connect to Talk WebSocket
+  // Connect to Talk WebSocket and drain queued PCM chunks
   const connectWs = useCallback(() => {
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return wsRef.current;
@@ -53,6 +55,13 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
 
     ws.onopen = () => {
       setIsConnected(true);
+      // Drain queued audio frames
+      while (pcmQueueRef.current.length > 0) {
+        const chunk = pcmQueueRef.current.shift();
+        if (chunk && ws.readyState === WebSocket.OPEN) {
+          ws.send(chunk);
+        }
+      }
     };
 
     ws.onclose = () => {
@@ -78,17 +87,74 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
     return ws;
   }, []);
 
+  const sendPcmChunk = useCallback((pcm16: Int16Array) => {
+    if (!isTalkingRef.current) return;
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(pcm16.buffer);
+    } else {
+      // Queue up to 15 chunks (~500ms) while connecting
+      if (pcmQueueRef.current.length < 15) {
+        pcmQueueRef.current.push(pcm16.buffer.slice(0) as ArrayBuffer);
+      }
+    }
+  }, []);
+
+  // Process and downsample raw Float32 samples to 16kHz Int16 PCM
+  const processFloatSamples = useCallback((inputBuffer: Float32Array, inputSampleRate: number) => {
+    if (!inputBuffer || inputBuffer.length === 0 || !isTalkingRef.current) return;
+
+    // Calculate instantaneous RMS volume
+    let sum = 0;
+    for (let i = 0; i < inputBuffer.length; i++) {
+      sum += inputBuffer[i] * inputBuffer[i];
+    }
+    const rms = Math.sqrt(sum / inputBuffer.length);
+    const level = Math.min(100, Math.round(rms * 320));
+    setTalkVolume(level);
+
+    const targetSampleRate = 16000;
+    let resampled: Float32Array;
+    if (inputSampleRate === targetSampleRate) {
+      resampled = inputBuffer;
+    } else {
+      const ratio = inputSampleRate / targetSampleRate;
+      const newLength = Math.round(inputBuffer.length / ratio);
+      resampled = new Float32Array(newLength);
+      for (let i = 0; i < newLength; i++) {
+        const originIndex = Math.min(Math.round(i * ratio), inputBuffer.length - 1);
+        resampled[i] = inputBuffer[originIndex];
+      }
+    }
+
+    const pcm16 = new Int16Array(resampled.length);
+    for (let i = 0; i < resampled.length; i++) {
+      const s = Math.max(-1, Math.min(1, resampled[i]));
+      pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+
+    sendPcmChunk(pcm16);
+  }, [sendPcmChunk]);
+
   // Stop broadcasting voice
   const stopTalking = useCallback(() => {
     isTalkingRef.current = false;
     setIsTalking(false);
     setTalkVolume(0);
+    pcmQueueRef.current = [];
 
-    if (processorRef.current) {
+    if (workletNodeRef.current) {
       try {
-        processorRef.current.disconnect();
+        workletNodeRef.current.disconnect();
       } catch {}
-      processorRef.current = null;
+      workletNodeRef.current = null;
+    }
+
+    if (scriptNodeRef.current) {
+      try {
+        scriptNodeRef.current.disconnect();
+      } catch {}
+      scriptNodeRef.current = null;
     }
 
     if (gainNodeRef.current) {
@@ -120,14 +186,14 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
     }
   }, []);
 
-  // Start broadcasting voice to camera speaker (with iOS Safari support)
+  // Start broadcasting voice with multi-tier browser compatibility
   const startTalking = useCallback(async () => {
     if (isTalkingRef.current) return;
 
     try {
       setErrorMsg(null);
 
-      // 1. iOS Safari Requirement: Synchronously unlock/create AudioContext inside user gesture
+      // 1. Synchronously create/unlock AudioContext in user gesture token
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtxClass) {
         throw new Error('Web Audio API not supported on this browser');
@@ -140,98 +206,111 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
       }
 
       if (ctx.state === 'suspended') {
-        // Resume immediately within user gesture token
-        ctx.resume().catch(() => {});
+        await ctx.resume().catch(() => {});
       }
 
       // 2. Connect WebSocket
       connectWs();
 
-      // 3. Request microphone access with iOS-compatible constraints
-      const constraints: MediaStreamConstraints = {
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      };
+      // 3. Request microphone access with progressive fallback
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch {
+        // Fallback for strict mobile browsers
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       mediaStreamRef.current = stream;
 
-      // Ensure AudioContext is running after async permission prompt
       if (ctx.state === 'suspended') {
         await ctx.resume();
       }
 
       const source = ctx.createMediaStreamSource(stream);
-
-      // 4. Create ScriptProcessorNode for 16-bit PCM chunk streaming
-      // iOS WebKit handles 2048 or 4096 buffer size reliably
-      const bufferSize = 2048;
-      const processor = ctx.createScriptProcessor(bufferSize, 1, 1);
-      processorRef.current = processor;
-
-      // 5. iOS WebKit Critical Fix: Connect processor to a silent GainNode (gain=0)
-      // If connected directly to destination, iOS feedback cancellation mutes the mic!
-      const muteGain = ctx.createGain();
-      muteGain.gain.setValueAtTime(0, ctx.currentTime);
-      gainNodeRef.current = muteGain;
-
-      const targetSampleRate = 16000;
       const inputSampleRate = ctx.sampleRate || 44100;
 
-      processor.onaudioprocess = (e) => {
-        if (!isTalkingRef.current) return;
+      // 4. Try AudioWorklet first (Modern iOS Safari 14.5+, Chrome, Firefox, Edge)
+      let workletSuccess = false;
+      if (ctx.audioWorklet && typeof URL !== 'undefined' && typeof Blob !== 'undefined') {
+        try {
+          const workletCode = `
+            class TalkProcessor extends AudioWorkletProcessor {
+              constructor() {
+                super();
+                this.buffer = new Float32Array(2048);
+                this.index = 0;
+              }
+              process(inputs) {
+                const input = inputs[0];
+                if (!input || !input[0]) return true;
+                const channel = input[0];
+                for (let i = 0; i < channel.length; i++) {
+                  this.buffer[this.index++] = channel[i];
+                  if (this.index >= 2048) {
+                    this.port.postMessage(this.buffer.slice(0, 2048));
+                    this.index = 0;
+                  }
+                }
+                return true;
+              }
+            }
+            registerProcessor('talk-processor', TalkProcessor);
+          `;
+          const blob = new Blob([workletCode], { type: 'application/javascript' });
+          const workletUrl = URL.createObjectURL(blob);
+          await ctx.audioWorklet.addModule(workletUrl);
+          URL.revokeObjectURL(workletUrl);
 
-        const inputBuffer = e.inputBuffer.getChannelData(0);
-        if (!inputBuffer || inputBuffer.length === 0) return;
+          const workletNode = new AudioWorkletNode(ctx, 'talk-processor');
+          workletNode.port.onmessage = (e) => {
+            if (isTalkingRef.current && e.data) {
+              processFloatSamples(e.data, inputSampleRate);
+            }
+          };
 
-        // Calculate instant input RMS volume
-        let sum = 0;
-        for (let i = 0; i < inputBuffer.length; i++) {
-          sum += inputBuffer[i] * inputBuffer[i];
+          source.connect(workletNode);
+          workletNodeRef.current = workletNode;
+          workletSuccess = true;
+        } catch (workletErr) {
+          console.debug('AudioWorklet fallback to ScriptProcessor:', workletErr);
         }
-        const rms = Math.sqrt(sum / inputBuffer.length);
-        const level = Math.min(100, Math.round(rms * 320));
-        setTalkVolume(level);
+      }
 
-        // Downsample / resample from inputSampleRate (e.g. 44.1k/48k on iPhone) to 16000Hz
-        let resampled: Float32Array;
-        if (inputSampleRate === targetSampleRate) {
-          resampled = inputBuffer;
-        } else {
-          const ratio = inputSampleRate / targetSampleRate;
-          const newLength = Math.round(inputBuffer.length / ratio);
-          resampled = new Float32Array(newLength);
-          for (let i = 0; i < newLength; i++) {
-            const originIndex = Math.min(Math.round(i * ratio), inputBuffer.length - 1);
-            resampled[i] = inputBuffer[originIndex];
+      // 5. Fallback to ScriptProcessorNode if AudioWorklet unavailable
+      if (!workletSuccess) {
+        const processor = ctx.createScriptProcessor(2048, 1, 1);
+        scriptNodeRef.current = processor;
+
+        // Use micro-gain (0.00001) connected to destination to prevent iOS power-saving throttle
+        const microGain = ctx.createGain();
+        microGain.gain.setValueAtTime(0.00001, ctx.currentTime);
+        gainNodeRef.current = microGain;
+
+        processor.onaudioprocess = (e) => {
+          if (!isTalkingRef.current) return;
+          const channel = e.inputBuffer.getChannelData(0);
+          if (channel && channel.length > 0) {
+            processFloatSamples(channel, inputSampleRate);
           }
-        }
+        };
 
-        // Convert Float32 (-1.0 to 1.0) to Int16 PCM bytes
-        const pcm16 = new Int16Array(resampled.length);
-        for (let i = 0; i < resampled.length; i++) {
-          const s = Math.max(-1, Math.min(1, resampled[i]));
-          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-        }
-
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(pcm16.buffer);
-        }
-      };
-
-      // Connect audio graph: source -> processor -> muteGain -> destination
-      source.connect(processor);
-      processor.connect(muteGain);
-      muteGain.connect(ctx.destination);
+        source.connect(processor);
+        processor.connect(microGain);
+        microGain.connect(ctx.destination);
+      }
 
       isTalkingRef.current = true;
       setIsTalking(true);
 
       if (onShowToast) {
-        onShowToast('Talk Active • Broadcasting voice to camera speaker');
+        onShowToast('Talk Active • Broadcasting voice to host speaker');
       }
 
       // Haptic vibration feedback on supported mobile devices
@@ -241,10 +320,10 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
         } catch {}
       }
     } catch (err: any) {
-      console.error('Error starting talk session on iOS/browser:', err);
+      console.error('Error starting talk session:', err);
       let errMsg = 'Failed to access microphone';
       if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
-        errMsg = 'Microphone permission denied. Please allow microphone access in iOS Settings.';
+        errMsg = 'Microphone permission denied. Please allow microphone access in browser settings.';
       } else if (err?.name === 'NotFoundError') {
         errMsg = 'No microphone device found on this device.';
       } else if (err?.message) {
@@ -256,7 +335,7 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
       }
       stopTalking();
     }
-  }, [connectWs, onShowToast, stopTalking]);
+  }, [connectWs, onShowToast, processFloatSamples, stopTalking]);
 
   const toggleTalking = useCallback(() => {
     if (isTalkingRef.current || isTalking) {
@@ -320,4 +399,5 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
     refreshSpeakerDevices: fetchSpeakerDevices,
   };
 }
+
 

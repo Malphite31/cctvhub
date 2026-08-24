@@ -520,7 +520,7 @@ class AudioSpeakerWorker:
             return False
 
     def start(self, sample_rate: int = 16000):
-        if self.is_active and self.sample_rate == sample_rate:
+        if self.is_active and self.sample_rate == sample_rate and (self.stream or (self._subprocess_playback and self._subprocess_playback.poll() is None)):
             return
 
         self.stop()
@@ -547,13 +547,22 @@ class AudioSpeakerWorker:
             except Exception as e:
                 logger.debug(f"sounddevice RawOutputStream start notice ({sample_rate}Hz, dev={target_dev}): {e}")
 
-        # Linux aplay fallback
+        # Linux aplay fallback with automatic ALSA plug conversion
         if platform.system() == "Linux":
             alsa_target = str(target_dev or "default")
-            if alsa_target.isdigit():
-                alsa_target = f"plughw:{alsa_target},0"
+            if alsa_target.startswith("plughw:") or alsa_target.startswith("plug:"):
+                plug_target = alsa_target
+            elif alsa_target.startswith("hw:"):
+                plug_target = "plug" + alsa_target
+            elif alsa_target.isdigit():
+                plug_target = f"plughw:{alsa_target},0"
+            elif alsa_target == "default":
+                plug_target = "plug:default"
+            else:
+                plug_target = f"plug:{alsa_target}"
+
             try:
-                cmd = ["aplay", "-D", alsa_target, "-r", str(sample_rate), "-c", "1", "-f", "S16_LE", "-t", "raw", "--buffer-size=1024"]
+                cmd = ["aplay", "-D", plug_target, "-r", str(sample_rate), "-c", "1", "-f", "S16_LE", "-t", "raw", "--buffer-size=2048"]
                 self._subprocess_playback = subprocess.Popen(
                     cmd,
                     stdin=subprocess.PIPE,
@@ -561,7 +570,7 @@ class AudioSpeakerWorker:
                     stderr=subprocess.DEVNULL
                 )
                 self.is_active = True
-                logger.info(f"Speaker playback started via aplay on {alsa_target} @ {sample_rate}Hz")
+                logger.info(f"Speaker playback started via aplay on {plug_target} @ {sample_rate}Hz")
                 return
             except Exception as e:
                 logger.error(f"aplay subprocess fallback failed: {e}")
@@ -596,12 +605,22 @@ class AudioSpeakerWorker:
                 logger.debug(f"Speaker stream write error: {e}")
 
         # Output to Linux aplay
-        if self._subprocess_playback and self._subprocess_playback.stdin:
-            try:
-                self._subprocess_playback.stdin.write(raw_bytes)
-                self._subprocess_playback.stdin.flush()
-            except Exception as e:
-                logger.debug(f"aplay stdin write error: {e}")
+        if self._subprocess_playback:
+            if self._subprocess_playback.poll() is not None:
+                self.start(client_sample_rate)
+            if self._subprocess_playback and self._subprocess_playback.stdin:
+                try:
+                    self._subprocess_playback.stdin.write(raw_bytes)
+                    self._subprocess_playback.stdin.flush()
+                except Exception:
+                    # Retry once after restart
+                    try:
+                        self.start(client_sample_rate)
+                        if self._subprocess_playback and self._subprocess_playback.stdin:
+                            self._subprocess_playback.stdin.write(raw_bytes)
+                            self._subprocess_playback.stdin.flush()
+                    except Exception:
+                        pass
 
     def flush(self):
         self.is_talking = False
