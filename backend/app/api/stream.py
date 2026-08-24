@@ -87,6 +87,21 @@ def set_resolution(
     worker = camera_manager.get_worker(dev)
     return worker.set_resolution(width, height, fps, quality_mode=mode)
 
+@router.post("/reconnect")
+@router.post("/restart")
+def restart_camera_hardware(dev: Optional[str] = Query(None, description="Camera device index")):
+    """Forcefully restarts camera capture hardware and resets video stream."""
+    target_dev = str(dev) if dev is not None else camera_manager.get_active_device()
+    worker = camera_manager.restart_camera(target_dev)
+    return {
+        "status": "success",
+        "device": target_dev,
+        "is_running": worker.is_running,
+        "is_hardware_active": worker.is_hardware_active,
+        "resolution": worker.resolution,
+        "fps": worker.requested_fps
+    }
+
 from typing import Optional
 from pydantic import BaseModel
 

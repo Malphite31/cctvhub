@@ -95,6 +95,13 @@ class CameraWorker:
         self.worker_thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.worker_thread.start()
 
+    def restart(self):
+        """Forcefully restarts and re-initializes the camera capture device."""
+        logger.info(f"Restarting CameraWorker for Dev {self.device}...")
+        self.stop()
+        time.sleep(0.2)
+        self.start()
+
     def _open_capture_device(self) -> Optional[cv2.VideoCapture]:
         is_windows = platform.system() == "Windows"
         source_val = str(self.source or self.device).strip()
@@ -109,27 +116,48 @@ class CameraWorker:
                 cap = cv2.VideoCapture(source_val)
             return cap
 
+        dev_idx = None
         try:
             dev_idx = int(source_val)
         except (ValueError, TypeError):
-            dev_idx = None
+            if source_val.startswith("/dev/video"):
+                try:
+                    dev_idx = int(source_val.replace("/dev/video", ""))
+                except Exception:
+                    pass
 
         cap = None
-        if is_windows and dev_idx is not None:
-            cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
+        if is_windows:
+            idx = dev_idx if dev_idx is not None else 0
+            cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
             if not cap.isOpened():
                 cap.release()
                 time.sleep(0.15)
-                cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
-        elif dev_idx is not None:
-            # On Linux Proxmox, try V4L2 backend first, then standard backend
-            cap = cv2.VideoCapture(dev_idx, cv2.CAP_V4L2)
-            if not cap.isOpened():
-                cap.release()
-                time.sleep(0.15)
-                cap = cv2.VideoCapture(dev_idx)
+                cap = cv2.VideoCapture(idx)
         else:
-            cap = cv2.VideoCapture(source_val)
+            # Linux V4L2 backend candidate order
+            candidates = []
+            if dev_idx is not None:
+                candidates.append((dev_idx, cv2.CAP_V4L2))
+                candidates.append((f"/dev/video{dev_idx}", cv2.CAP_V4L2))
+                candidates.append((dev_idx, None))
+            else:
+                candidates.append((source_val, cv2.CAP_V4L2))
+                candidates.append((source_val, None))
+
+            for target, backend in candidates:
+                try:
+                    if backend is not None:
+                        cap = cv2.VideoCapture(target, backend)
+                    else:
+                        cap = cv2.VideoCapture(target)
+                    if cap and cap.isOpened():
+                        break
+                    if cap:
+                        cap.release()
+                        cap = None
+                except Exception:
+                    pass
 
         if cap and cap.isOpened() and not is_ip_stream:
             try:
@@ -518,6 +546,19 @@ class MultiCameraManager:
         active_id = self.get_active_device()
         return self.get_worker(active_id)
 
+    def restart_camera(self, device_id: str) -> CameraWorker:
+        """Forcefully re-initializes and restarts the camera worker for the given device ID."""
+        with self.lock:
+            dev_str = str(device_id)
+            if dev_str in self.workers:
+                worker = self.workers[dev_str]
+                worker.restart()
+                return worker
+            else:
+                worker = self.get_worker(dev_str)
+                worker.restart()
+                return worker
+
     def get_worker(self, device_id: str, source: Optional[str] = None) -> CameraWorker:
         with self.lock:
             dev_str = str(device_id)
@@ -541,6 +582,11 @@ class MultiCameraManager:
                 worker = CameraWorker(device=device_id, source=source)
                 worker.start()
                 self.workers[dev_str] = worker
+            else:
+                # Ensure thread is alive
+                w = self.workers[dev_str]
+                if not w.is_running or not (w.worker_thread and w.worker_thread.is_alive()):
+                    w.restart()
             return self.workers[dev_str]
 
     def probe_camera_resolutions(self, source_val: Any) -> List[Dict[str, Any]]:

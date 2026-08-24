@@ -730,6 +730,26 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     }
   };
 
+  const handleRestartCamera = async () => {
+    if (onShowToast) onShowToast('Reactivating & restarting camera hardware...');
+    try {
+      const res = await fetch(`/api/stream/restart?dev=${encodeURIComponent(activeDevice)}`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        setStreamError(false);
+        setIsPlaying(true);
+        setStreamKey(Date.now());
+        if (onShowToast) onShowToast('Camera reactivated successfully!');
+        if (onRefreshDevices) onRefreshDevices();
+      } else {
+        if (onShowToast) onShowToast('Failed to restart camera device', true);
+      }
+    } catch {
+      if (onShowToast) onShowToast('Failed to connect to camera service', true);
+    }
+  };
+
   const supportedResolutions: CameraResolutionOption[] = useMemo(() => {
     const standard: CameraResolutionOption[] = [
       { label: '1080p FHD • Crystal Clear', value: '1920x1080', fps: '60 FPS', width: 1920, height: 1080, tier: 'hd' },
@@ -1087,6 +1107,17 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
         {/* Right: Action Buttons */}
         <div className="flex items-center gap-1 shrink-0">
+          {/* Force Reactivate / Restart Camera Hardware */}
+          {hasCameras && (
+            <button
+              onClick={handleRestartCamera}
+              className="p-1.5 rounded-lg border border-[#222222] bg-[#161616] hover:bg-[#1f1f1f] text-zinc-300 hover:text-emerald-400 transition-colors"
+              title="Force Restart / Reactivate Camera Hardware"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          )}
+
           {/* Grid Layout Toggle */}
           {hasCameras && (
             <button
@@ -1296,19 +1327,31 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                   </div>
                 )}
 
-                {/* Stream Error Notice */}
+                {/* Stream Error Notice with Force Reactivate Option */}
                 {streamError && (
-                  <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center gap-3 z-30">
-                    <p className="text-xs font-mono text-zinc-300">Connecting Camera Signal...</p>
-                    <button
-                      onClick={() => {
-                        setStreamError(false);
-                        onReconnect();
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-[#161616] hover:bg-[#222222] text-xs font-medium text-white border border-[#333]"
-                    >
-                      Retry Connection
-                    </button>
+                  <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center gap-3 z-30 p-4 text-center">
+                    <div className="p-3 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400">
+                      <RotateCcw className="h-6 w-6 animate-pulse" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-mono text-zinc-200 font-semibold">Camera Signal Disconnected / Standby</p>
+                      <p className="text-[11px] text-zinc-400 font-mono mt-0.5">Attempting auto-recovery or tap below to force reactivate.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleRestartCamera}
+                        className="px-3.5 py-1.5 rounded-lg bg-[#3B82F6] hover:bg-blue-600 text-xs font-semibold text-white shadow-lg transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        <span>Reactivate Camera</span>
+                      </button>
+                      <button
+                        onClick={handleScanHardware}
+                        className="px-3 py-1.5 rounded-lg bg-[#18181c] hover:bg-[#222226] text-xs font-medium text-zinc-300 border border-[#2c2c32] transition-colors cursor-pointer"
+                      >
+                        Scan Devices
+                      </button>
+                    </div>
                   </div>
                 )}
 
