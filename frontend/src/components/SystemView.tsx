@@ -76,37 +76,38 @@ export const SystemView: React.FC<SystemViewProps> = ({
   };
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto space-y-3 sm:space-y-4 select-none text-xs">
+    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-3 sm:space-y-4 select-none text-xs w-full">
       {/* Software & Git Updates Card */}
-      <div className="rounded-xl border border-[#222222] bg-[#121212] p-3.5 sm:p-4 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[#222222]">
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-lg bg-[#3B82F6]/10 border border-[#3B82F6]/20 flex items-center justify-center text-[#3B82F6]">
+      <div className="rounded-xl border border-[#222222] bg-[#121212] p-3 sm:p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-[#222222]">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="h-8 w-8 rounded-lg bg-[#3B82F6]/10 border border-[#3B82F6]/20 flex items-center justify-center text-[#3B82F6] shrink-0">
               <GitBranch className="h-4 w-4" />
             </div>
-            <div>
-              <h4 className="font-semibold text-xs text-white flex items-center gap-2">
-                Software & System Updates
+            <div className="min-w-0">
+              <h4 className="font-semibold text-xs text-white flex items-center gap-2 flex-wrap">
+                <span>Software & System Updates</span>
                 {hasUpdate && (
                   <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
                     UPDATE AVAILABLE
                   </span>
                 )}
               </h4>
-              <p className="text-[10px] text-zinc-400 font-mono">
+              <p className="text-[10px] text-zinc-400 font-mono truncate">
                 Continuous in-app delivery via GitHub repository
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Action Buttons: Responsive 3-column grid on mobile, flex row on sm+ */}
+          <div className="grid grid-cols-3 gap-1.5 w-full sm:w-auto sm:flex sm:items-center sm:gap-2 shrink-0">
             <button
               type="button"
               onClick={onRefresh}
-              className="px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-zinc-300 border border-[#2a2a2a] text-[11px] font-mono flex items-center gap-1.5 transition-colors"
+              className="px-2 sm:px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-zinc-300 border border-[#2a2a2a] text-[10px] sm:text-[11px] font-mono flex items-center justify-center gap-1 sm:gap-1.5 transition-colors"
               title="Refresh telemetry and diagnostics"
             >
-              <RefreshCw className="h-3 w-3 text-[#3B82F6]" />
+              <RefreshCw className="h-3 w-3 text-[#3B82F6] shrink-0" />
               <span>Refresh</span>
             </button>
 
@@ -114,11 +115,11 @@ export const SystemView: React.FC<SystemViewProps> = ({
               <button
                 type="button"
                 onClick={onCheckUpdate}
-                className="px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-zinc-300 border border-[#2a2a2a] text-[11px] font-mono flex items-center gap-1.5 transition-colors"
+                className="px-2 sm:px-2.5 py-1.5 rounded-lg bg-[#161616] hover:bg-[#202020] text-zinc-300 border border-[#2a2a2a] text-[10px] sm:text-[11px] font-mono flex items-center justify-center gap-1 sm:gap-1.5 transition-colors"
                 title="Check GitHub repository for new commits"
               >
-                <RefreshCw className="h-3 w-3 text-zinc-400" />
-                <span>Check Updates</span>
+                <RefreshCw className="h-3 w-3 text-zinc-400 shrink-0" />
+                <span className="truncate">Check</span>
               </button>
             )}
 
@@ -126,14 +127,14 @@ export const SystemView: React.FC<SystemViewProps> = ({
               <button
                 type="button"
                 onClick={onOpenUpdateModal}
-                className={`px-3 py-1.5 rounded-lg text-white font-medium text-[11px] flex items-center gap-1.5 transition-all shadow-md ${
+                className={`px-2 sm:px-3 py-1.5 rounded-lg text-white font-medium text-[10px] sm:text-[11px] flex items-center justify-center gap-1 sm:gap-1.5 transition-all shadow-md ${
                   hasUpdate
                     ? 'bg-[#3B82F6] hover:bg-blue-600 shadow-blue-500/20'
                     : 'bg-[#18181c] hover:bg-[#242428] text-zinc-200 border border-[#2e2e34]'
                 }`}
               >
-                {hasUpdate ? <Download className="h-3 w-3" /> : <ArrowUpRight className="h-3 w-3" />}
-                <span>{hasUpdate ? 'Update Now' : 'Manage Version'}</span>
+                {hasUpdate ? <Download className="h-3 w-3 shrink-0" /> : <ArrowUpRight className="h-3 w-3 shrink-0" />}
+                <span className="truncate">{hasUpdate ? 'Update' : 'Manage'}</span>
               </button>
             )}
           </div>
@@ -144,16 +145,16 @@ export const SystemView: React.FC<SystemViewProps> = ({
           <div className="p-2.5 rounded-lg bg-[#161616] border border-[#222222] space-y-0.5">
             <span className="text-[10px] font-mono text-zinc-400">Current Commit</span>
             <div className="font-mono text-xs text-white font-bold flex items-center gap-1.5">
-              <span>{currentCommit}</span>
-              <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#222222] text-zinc-400 font-normal">v2.1.0</span>
+              <span className="truncate">{currentCommit}</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#222222] text-zinc-400 font-normal shrink-0">v2.1.0</span>
             </div>
           </div>
 
           <div className="p-2.5 rounded-lg bg-[#161616] border border-[#222222] space-y-0.5">
             <span className="text-[10px] font-mono text-zinc-400">Git Branch</span>
             <div className="font-mono text-xs text-white font-bold flex items-center gap-1">
-              <GitBranch className="h-3 w-3 text-[#3B82F6]" />
-              <span>{branch}</span>
+              <GitBranch className="h-3 w-3 text-[#3B82F6] shrink-0" />
+              <span className="truncate">{branch}</span>
             </div>
           </div>
 
@@ -163,7 +164,7 @@ export const SystemView: React.FC<SystemViewProps> = ({
               {hasUpdate ? (
                 <>
                   <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping shrink-0" />
-                  <span className="text-amber-300 font-semibold">{latestCommit} Ready</span>
+                  <span className="text-amber-300 font-semibold truncate">{latestCommit} Ready</span>
                 </>
               ) : (
                 <>
@@ -176,12 +177,12 @@ export const SystemView: React.FC<SystemViewProps> = ({
         </div>
 
         {/* Latest Commit Message Preview */}
-        <div className="p-2.5 rounded-lg bg-[#161616] border border-[#222222] flex items-center justify-between text-[11px] font-mono text-zinc-300">
-          <span className="truncate pr-2">
-            <span className="text-zinc-500 mr-2">Release:</span>
-            {commitMsg}
-          </span>
-          <span className="text-[9px] text-zinc-500 shrink-0">auto-checks every 30m</span>
+        <div className="p-2.5 rounded-lg bg-[#161616] border border-[#222222] flex items-center justify-between text-[11px] font-mono text-zinc-300 gap-2 min-w-0">
+          <div className="min-w-0 truncate flex items-center">
+            <span className="text-zinc-500 mr-1.5 shrink-0">Release:</span>
+            <span className="truncate text-zinc-300">{commitMsg}</span>
+          </div>
+          <span className="text-[9px] text-zinc-500 shrink-0 hidden xs:inline">auto-checks 30m</span>
         </div>
       </div>
 
