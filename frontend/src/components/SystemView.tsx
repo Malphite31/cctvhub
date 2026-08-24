@@ -326,7 +326,6 @@ export const SystemView: React.FC<SystemViewProps> = ({
           {accessList.map((item, idx) => {
             const isPublic = item.type === 'public';
             const isLan = item.type === 'lan';
-            const ipKey = `ip_${idx}`;
             const urlKey = `url_${idx}`;
 
             return (
@@ -351,42 +350,31 @@ export const SystemView: React.FC<SystemViewProps> = ({
                   </p>
                 </div>
 
-                <div className="p-2 rounded bg-[#0f0f12] border border-[#222226] font-mono text-[11px] text-zinc-200 flex items-center justify-between gap-1.5">
-                  <span className="truncate font-semibold select-all text-white" title={item.url}>
+                {/* Unified Interactive Address Bar */}
+                <div className="flex items-center justify-between p-2 rounded-lg bg-[#0e0e11] border border-[#222226] hover:border-[#2e2e36] font-mono text-[11px] gap-2 transition-colors">
+                  <span className="truncate font-semibold text-white select-all" title={item.url}>
                     {item.url}
                   </span>
-                  <a
-                    href={item.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-zinc-400 hover:text-white p-1 hover:bg-[#222226] rounded transition-colors"
-                    title="Open in new browser tab"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </a>
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(item.url, urlKey, item.name)}
-                    className="flex-1 py-1.5 px-2 rounded bg-[#202024] hover:bg-[#2c2c32] text-zinc-200 text-[10px] font-mono flex items-center justify-center gap-1.5 border border-[#333338] transition-colors cursor-pointer"
-                  >
-                    {copiedKey === urlKey ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3 text-[#3B82F6]" />}
-                    <span>{copiedKey === urlKey ? 'Copied URL!' : 'Copy URL'}</span>
-                  </button>
-
-                  {item.ip && (
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       type="button"
-                      onClick={() => handleCopy(item.ip!, ipKey, `${item.name} IP`)}
-                      className="py-1.5 px-2 rounded bg-[#18181c] hover:bg-[#222226] text-zinc-300 text-[10px] font-mono flex items-center justify-center gap-1 border border-[#2c2c30] transition-colors cursor-pointer"
-                      title="Copy IP Address only"
+                      onClick={() => handleCopy(item.url, urlKey, item.name)}
+                      className="px-2 py-1 rounded bg-[#1c1c22] hover:bg-[#282830] text-zinc-200 text-[10px] font-mono flex items-center gap-1 border border-[#303038] transition-colors cursor-pointer"
+                      title="Copy address to clipboard"
                     >
-                      {copiedKey === ipKey ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3 text-zinc-400" />}
-                      <span>IP</span>
+                      {copiedKey === urlKey ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3 text-[#3B82F6]" />}
+                      <span>{copiedKey === urlKey ? 'Copied' : 'Copy'}</span>
                     </button>
-                  )}
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-1 rounded bg-[#1c1c22] hover:bg-[#282830] text-zinc-400 hover:text-white border border-[#303038] transition-colors cursor-pointer flex items-center justify-center"
+                      title="Open in new browser tab"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
                 </div>
               </div>
             );
