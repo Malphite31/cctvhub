@@ -102,6 +102,33 @@ def restart_camera_hardware(dev: Optional[str] = Query(None, description="Camera
         "fps": worker.requested_fps
     }
 
+@router.post("/pause")
+def pause_camera_stream(dev: Optional[str] = Query(None, description="Camera device index")):
+    """Pauses the camera worker, deactivates USB/hardware capture, and turns off webcam sensor."""
+    target_dev = str(dev) if dev is not None else camera_manager.get_active_device()
+    worker = camera_manager.get_worker(target_dev)
+    worker.pause()
+    return {
+        "status": "paused",
+        "device": target_dev,
+        "is_paused": True,
+        "is_hardware_active": False
+    }
+
+@router.post("/resume")
+@router.post("/play")
+def resume_camera_stream(dev: Optional[str] = Query(None, description="Camera device index")):
+    """Resumes the camera worker, reactivates hardware capture, and resumes live stream."""
+    target_dev = str(dev) if dev is not None else camera_manager.get_active_device()
+    worker = camera_manager.get_worker(target_dev)
+    worker.resume()
+    return {
+        "status": "active",
+        "device": target_dev,
+        "is_paused": False,
+        "is_hardware_active": worker.is_hardware_active
+    }
+
 from typing import Optional
 from pydantic import BaseModel
 

@@ -95,9 +95,31 @@ class CameraWorker:
         self.worker_thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.worker_thread.start()
 
+    def pause(self):
+        """Pauses the camera worker and deactivates hardware sensor (turns off webcam LED)."""
+        logger.info(f"Pausing CameraWorker for Dev {self.device} (deactivating hardware sensor)...")
+        self.is_paused = True
+        self.is_hardware_active = False
+        if self.cap is not None:
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+            self.cap = None
+
+    def resume(self):
+        """Resumes the camera worker and reactivates hardware capture."""
+        logger.info(f"Resuming CameraWorker for Dev {self.device}...")
+        self.is_paused = False
+        if self.cap is None or not self.cap.isOpened():
+            self.cap = self._open_capture_device()
+            if self.cap and self.cap.isOpened():
+                self.is_hardware_active = True
+
     def restart(self):
         """Forcefully restarts and re-initializes the camera capture device."""
         logger.info(f"Restarting CameraWorker for Dev {self.device}...")
+        self.is_paused = False
         self.stop()
         time.sleep(0.2)
         self.start()
@@ -323,6 +345,30 @@ class CameraWorker:
 
         while self.is_running:
             loop_start = time.time()
+
+            # Handle Paused / Hardware Deactivated state
+            if getattr(self, "is_paused", False):
+                self.is_hardware_active = False
+                if self.cap is not None:
+                    try:
+                        self.cap.release()
+                    except Exception:
+                        pass
+                    self.cap = None
+
+                now_ts = time.time()
+                if (now_ts - self._last_standby_gen >= 1.0) or (self._cached_standby_jpeg is None):
+                    self._last_standby_gen = now_ts
+                    frame = self._generate_standby_frame(f"FEED PAUSED // HARDWARE DEACTIVATED")
+                    _, buf = cv2.imencode('.jpg', frame, encode_param)
+                    self._cached_standby_jpeg = buf.tobytes()
+                    with self.lock:
+                        self.latest_raw_frame = frame
+                        self.latest_frame = frame
+                        self.latest_jpeg = self._cached_standby_jpeg
+                        self.latest_detections = []
+                time.sleep(0.15)
+                continue
 
             # Handle scheduled camera reconnection (e.g. resolution change)
             if getattr(self, "_need_reconnect", False):

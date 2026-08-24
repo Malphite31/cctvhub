@@ -464,19 +464,30 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
-  const handleTogglePlay = () => {
+  const handleTogglePlay = async () => {
     if (isPlaying) {
       setPausedTimestamp(Date.now());
       setIsPlaying(false);
+      try {
+        await fetch(`/api/stream/pause?dev=${encodeURIComponent(activeDevice)}`, { method: 'POST' });
+        if (onShowToast) onShowToast('Camera Paused • Hardware Deactivated (Transmission Off)');
+      } catch {}
     } else {
       setStreamKey(Date.now());
       setPausedTimestamp(null);
       setIsPlaying(true);
+      try {
+        await fetch(`/api/stream/resume?dev=${encodeURIComponent(activeDevice)}`, { method: 'POST' });
+        if (onShowToast) onShowToast('Camera Resumed • Live Transmission Active');
+      } catch {}
     }
   };
 
   // Live Transmission Throughput (Bitrate) for Camera Feed
   const liveSpeedMbps = useMemo(() => {
+    if (!isPlaying) {
+      return '0 Kbps (OFF)';
+    }
     if (stats?.bitrateKbps && stats.bitrateKbps > 0) {
       const mbps = stats.bitrateKbps / 1000;
       return mbps >= 1.0 ? `${mbps.toFixed(2)} Mbps` : `${Math.round(stats.bitrateKbps)} Kbps`;
@@ -1314,8 +1325,13 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                       <div className="p-3.5 rounded-full bg-black/80 border border-white/20 text-white shadow-2xl group-hover:scale-110 group-hover:bg-[#3B82F6] transition-all">
                         <Play className="h-7 w-7 text-white fill-white ml-0.5" />
                       </div>
-                      <div className="px-3 py-1 rounded-md bg-black/85 border border-[#333] text-[11px] font-mono text-zinc-200 tracking-wider">
-                        FEED PAUSED • CLICK TO RESUME
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="px-3 py-1 rounded-md bg-black/85 border border-[#333] text-[11px] font-mono text-zinc-200 tracking-wider">
+                          FEED PAUSED • HARDWARE DEACTIVATED
+                        </div>
+                        <div className="text-[10px] font-mono text-zinc-400">
+                          (Click anywhere to reactivate camera & resume feed)
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1356,7 +1372,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                     {/* Live / Paused Badge */}
                     <div className="bg-black/80 backdrop-blur-xs px-1.5 sm:px-2 py-0.5 rounded-md border border-[#222222] flex items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[10px] font-mono text-white shrink-0 shadow-sm">
                       <span className={`h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full ${isPlaying ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                      <span>{isPlaying ? 'LIVE' : 'PAUSED'}</span>
+                      <span>{isPlaying ? 'LIVE' : 'PAUSED (OFF)'}</span>
                     </div>
 
                     {/* Motion Detected Alert Badge */}
@@ -1380,10 +1396,10 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                   <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto">
                     {/* Live Transmission Speed Overlay */}
                     <div className="bg-black/80 backdrop-blur-xs px-1.5 sm:px-2 py-0.5 rounded-md border border-[#222222] flex items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[10px] font-mono text-zinc-300 shadow-sm shrink-0">
-                      <Wifi className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-emerald-400 animate-pulse shrink-0" />
-                      <span className="text-emerald-400 font-bold tracking-tight">{liveSpeedMbps}</span>
+                      <Wifi className={`h-2.5 w-2.5 sm:h-3 sm:w-3 ${isPlaying ? 'text-emerald-400 animate-pulse' : 'text-zinc-500'} shrink-0`} />
+                      <span className={`font-bold tracking-tight ${isPlaying ? 'text-emerald-400' : 'text-zinc-400'}`}>{liveSpeedMbps}</span>
                       <span className="text-zinc-600 hidden sm:inline">•</span>
-                      <span className="text-zinc-300 font-semibold hidden sm:inline">{currentCam?.fps || stats?.fps || 60} FPS</span>
+                      <span className="text-zinc-300 font-semibold hidden sm:inline">{isPlaying ? `${currentCam?.fps || stats?.fps || 60} FPS` : 'SLEEP'}</span>
                     </div>
 
                     {/* Live Timecode Overlay (Time only on mobile, Full Date+Time on sm+) */}
