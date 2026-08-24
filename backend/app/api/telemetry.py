@@ -299,6 +299,148 @@ def get_hardware_diagnostics() -> Dict[str, Any]:
         "device": device_info
     }
 
+def get_network_access_info() -> Dict[str, Any]:
+    """Inspects all network interfaces and generates access IP and URL list."""
+    interfaces = []
+    local_ips = []
+    tailscale_ip = None
+
+    try:
+        if_addrs = psutil.net_if_addrs()
+        for if_name, addrs in if_addrs.items():
+            for addr in addrs:
+                if addr.family == socket.AF_INET:
+                    ip = addr.address
+                    if ip.startswith("127."):
+                        continue
+                    is_tailscale = "tailscale" in if_name.lower() or ip.startswith("100.")
+                    if is_tailscale:
+                        tailscale_ip = ip
+                    else:
+                        local_ips.append(ip)
+                    
+                    interfaces.append({
+                        "interface": if_name,
+                        "ip": ip,
+                        "netmask": addr.netmask,
+                        "type": "tailscale" if is_tailscale else "local"
+                    })
+    except Exception:
+        pass
+
+    # Fallback if psutil missed host IP
+    if not local_ips:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            sock_ip = s.getsockname()[0]
+            s.close()
+            if sock_ip and not sock_ip.startswith("127."):
+                local_ips.append(sock_ip)
+        except Exception:
+            pass
+
+    primary_lan_ip = local_ips[0] if local_ips else "192.168.100.50"
+    
+    access_urls = [
+        {
+            "name": "Public Cloudflare Tunnel",
+            "url": "https://cctv.benzsiangco.site",
+            "ip": "cctv.benzsiangco.site",
+            "type": "public",
+            "desc": "HTTPS / SSL • Recommended for Mobile & 2-Way Audio"
+        },
+        {
+            "name": "Local LAN Network",
+            "url": f"http://{primary_lan_ip}:8000",
+            "ip": f"{primary_lan_ip}:8000",
+            "type": "lan",
+            "desc": "Direct Local Wi-Fi / Ethernet High-Speed Access"
+        },
+        {
+            "name": "Tailscale VPN",
+            "url": f"http://{tailscale_ip or '100.104.29.49'}:8000",
+            "ip": f"{tailscale_ip or '100.104.29.49'}:8000",
+            "type": "vpn",
+            "desc": "Encrypted Remote Access via Tailscale Mesh"
+        }
+    ]
+
+    return {
+        "primary_ip": primary_lan_ip,
+        "local_ips": local_ips,
+        "tailscale_ip": tailscale_ip or "100.104.29.49",
+        "public_domain": "https://cctv.benzsiangco.site",
+        "access_urls": access_urls,
+        "interfaces": interfaces
+    }
+
+@router.get("/network")
+def get_network_telemetry():
+    """Returns network interfaces, local IPs, Tailscale IP, and access URLs."""
+    return get_network_access_info()
+
+@router.get("/logs")
+def get_system_dev_logs(limit: int = 250, level: Optional[str] = None):
+    """Retrieves live server terminal logs for debugging and bug tracing."""
+    logs_raw = []
+    
+    # 1. On Linux, try reading systemd service logs via journalctl
+    if os.name != "nt":
+        try:
+            import subprocess
+            cmd = ["journalctl", "-u", "cctv-hub", "-n", str(limit), "--no-pager", "-o", "short-iso"]
+            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=2).decode("utf-8", errors="ignore")
+            for line in out.splitlines():
+                if not line.strip():
+                    continue
+                lvl = "INFO"
+                line_lower = line.lower()
+                if any(k in line_lower for k in ["error", "exception", "traceback", "failed", "critical"]):
+                    lvl = "ERROR"
+                elif any(k in line_lower for k in ["warn", "warning"]):
+                    lvl = "WARN"
+                elif "debug" in line_lower:
+                    lvl = "DEBUG"
+                
+                logs_raw.append({
+                    "raw": line,
+                    "level": lvl,
+                    "message": line
+                })
+        except Exception:
+            pass
+
+    # 2. If journalctl returned nothing or running in standalone/dev mode, read in-memory buffer
+    if not logs_raw:
+        try:
+            from ..core.logging_buffer import log_buffer
+            logs_raw = log_buffer.get_logs(limit=limit, level=level)
+        except Exception:
+            pass
+
+    # Filter by level if requested
+    if level and level.upper() != "ALL":
+        target_lvl = level.upper()
+        logs_raw = [l for l in logs_raw if l.get("level", "").upper() == target_lvl]
+
+    full_text = "\n".join(l.get("raw", l.get("message", "")) for l in logs_raw)
+    return {
+        "logs": logs_raw,
+        "count": len(logs_raw),
+        "raw_text": full_text
+    }
+
+@router.delete("/logs")
+def clear_system_dev_logs():
+    """Clears in-memory development logs."""
+    try:
+        from ..core.logging_buffer import log_buffer
+        log_buffer.clear()
+    except Exception:
+        pass
+    return {"status": "cleared"}
+
 @router.get("/system")
 def get_system_telemetry():
     """Returns real-time CPU, RAM, Disk, Network throughput, Battery, Temperature, and Hardware info."""
@@ -331,6 +473,7 @@ def get_system_telemetry():
     recv_mbps = round(recv_bps / 1_000_000, 1)
 
     hw = get_hardware_diagnostics()
+    net_info = get_network_access_info()
 
     return {
         "cpu_percent": round(cpu_percent, 1),
@@ -348,7 +491,8 @@ def get_system_telemetry():
         "battery": hw["battery"],
         "temperatures": hw["temperatures"],
         "primary_temp": hw["primary_temp"],
-        "device": hw["device"]
+        "device": hw["device"],
+        "network": net_info
     }
 
 @router.get("/devices")

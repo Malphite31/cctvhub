@@ -30,6 +30,39 @@ export interface HostDeviceInfo {
   cpu_cores_logical: number;
 }
 
+export interface NetworkAccessUrl {
+  name: string;
+  url: string;
+  ip?: string;
+  type: 'public' | 'lan' | 'vpn';
+  desc: string;
+}
+
+export interface NetworkInterfaceInfo {
+  interface: string;
+  ip: string;
+  netmask?: string;
+  type: 'local' | 'tailscale';
+}
+
+export interface NetworkAccessInfo {
+  primary_ip: string;
+  local_ips: string[];
+  tailscale_ip: string;
+  public_domain: string;
+  access_urls: NetworkAccessUrl[];
+  interfaces: NetworkInterfaceInfo[];
+}
+
+export interface DevLogEntry {
+  raw?: string;
+  message?: string;
+  level?: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';
+  time_str?: string;
+  logger?: string;
+  timestamp?: number;
+}
+
 export interface SystemTelemetry {
   cpu_percent: number;
   ram_used_mb: number;
@@ -47,6 +80,7 @@ export interface SystemTelemetry {
   temperatures?: ThermalSensorInfo[];
   primary_temp?: number | null;
   device?: HostDeviceInfo;
+  network?: NetworkAccessInfo;
 }
 
 export interface UpdateCheckInfo {

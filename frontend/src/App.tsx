@@ -865,6 +865,7 @@ export const App: React.FC = () => {
                 onOpenUpdateModal={() => setIsUpdateModalOpen(true)}
                 onCheckUpdate={() => fetchUpdateCheck(true)}
                 onRefresh={fetchTelemetry}
+                onShowToast={showToast}
               />
             </div>
           )}
