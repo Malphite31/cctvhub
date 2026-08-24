@@ -31,7 +31,6 @@ class CameraWorker:
         self.is_hardware_active = False
         self.last_client_access = time.time()
         self._cached_standby_jpeg: Optional[bytes] = None
-        self._last_standby_gen = 0.0
         self.brightness = 50
         self.contrast = 50
         self.saturation = 50
@@ -42,6 +41,22 @@ class CameraWorker:
         self.pan_x = 0.0
         self.pan_y = 0.0
         self._need_reconnect = False
+
+        # Load persisted camera adjustments from DB
+        try:
+            from ..core.database import get_camera_adjustments
+            adj = get_camera_adjustments(str(self.device))
+            self.brightness = adj.get("brightness", 50)
+            self.contrast = adj.get("contrast", 50)
+            self.saturation = adj.get("saturation", 50)
+            self.flip_h = bool(adj.get("flip_h", False))
+            self.flip_v = bool(adj.get("flip_v", False))
+            self.rotation = int(adj.get("rotation", 0))
+            self.zoom = float(adj.get("zoom", 1.0))
+            self.pan_x = float(adj.get("pan_x", 0.0))
+            self.pan_y = float(adj.get("pan_y", 0.0))
+        except Exception:
+            pass
 
     def start(self, width: Optional[int] = None, height: Optional[int] = None, fps: Optional[int] = None):
         if self.is_running:
@@ -406,6 +421,35 @@ class MultiCameraManager:
         self.lock = threading.Lock()
         self._cached_devices: List[Dict[str, Any]] = []
         self._last_scan_time = 0
+        self._active_device_id: Optional[str] = None
+
+    def get_active_device(self) -> str:
+        with self.lock:
+            if self._active_device_id:
+                return self._active_device_id
+        try:
+            from ..core.database import get_active_camera
+            active_id = get_active_camera()
+            with self.lock:
+                self._active_device_id = str(active_id)
+            return str(active_id)
+        except Exception:
+            return "0"
+
+    def set_active_device(self, device_id: str) -> str:
+        clean_id = str(device_id).strip()
+        with self.lock:
+            self._active_device_id = clean_id
+        try:
+            from ..core.database import set_active_camera
+            set_active_camera(clean_id)
+        except Exception:
+            pass
+        return clean_id
+
+    def get_active_worker(self) -> CameraWorker:
+        active_id = self.get_active_device()
+        return self.get_worker(active_id)
 
     def get_worker(self, device_id: str, source: Optional[str] = None) -> CameraWorker:
         with self.lock:
@@ -424,7 +468,7 @@ class MultiCameraManager:
                 worker = CameraWorker(device=device_id, source=resolved_source)
                 worker.start()
                 self.workers[dev_str] = worker
-            elif source is not None and self.workers[dev_str].source != source:
+            elif source is not None and str(self.workers[dev_str].source) != str(source):
                 # Source updated: restart worker with new source
                 self.workers[dev_str].stop()
                 worker = CameraWorker(device=device_id, source=source)
@@ -743,5 +787,9 @@ class MultiCameraManager:
 
 
 camera_manager = MultiCameraManager()
-# Primary worker alias for single-cam routes
-camera_worker = camera_manager.get_worker("0")
+# Primary dynamic worker proxy for single-cam routes and background workers
+class _CameraWorkerProxy:
+    def __getattr__(self, name):
+        return getattr(camera_manager.get_active_worker(), name)
+
+camera_worker = _CameraWorkerProxy()

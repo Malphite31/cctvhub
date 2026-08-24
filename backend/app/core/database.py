@@ -1,5 +1,6 @@
 import sqlite3
 import time
+import json
 import hashlib
 import secrets
 from pathlib import Path
@@ -134,6 +135,7 @@ def init_db():
                     INSERT INTO cameras (id, name, source, resolution, fps, zone, is_online, created_at)
                     VALUES ('0', 'Primary Live Camera', '0', '1920x1080', 60, 'Front Entrance', 1, ?)
                 """, (now,))
+            cursor.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES ('cameras_seeded', '1')")
         # User Sessions & Device Audit Log Table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS user_sessions (
@@ -460,6 +462,65 @@ def delete_configured_camera(camera_id: str) -> bool:
         ))
         conn.commit()
         return cursor.rowcount > 0
+
+def get_active_camera() -> str:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM system_config WHERE key = 'active_camera'")
+        row = cursor.fetchone()
+        if row and row[0]:
+            return str(row[0])
+        # Fallback to first configured camera in DB if available
+        cursor.execute("SELECT id FROM cameras ORDER BY id ASC LIMIT 1")
+        cam_row = cursor.fetchone()
+        if cam_row and cam_row[0]:
+            return str(cam_row[0])
+        return "0"
+
+def set_active_camera(camera_id: str) -> str:
+    clean_id = str(camera_id).strip()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES ('active_camera', ?)", (clean_id,))
+        conn.commit()
+    return clean_id
+
+def get_camera_adjustments(camera_id: str) -> Dict[str, Any]:
+    clean_id = str(camera_id).strip()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM system_config WHERE key = ?", (f"camera_adjustments_{clean_id}",))
+        row = cursor.fetchone()
+        if row and row[0]:
+            try:
+                return json.loads(row[0])
+            except Exception:
+                pass
+    return {
+        "flip_h": False,
+        "flip_v": False,
+        "rotation": 0,
+        "zoom": 1.0,
+        "pan_x": 0.0,
+        "pan_y": 0.0,
+        "brightness": 50,
+        "contrast": 50,
+        "saturation": 50
+    }
+
+def set_camera_adjustments(camera_id: str, adjustments: Dict[str, Any]) -> Dict[str, Any]:
+    clean_id = str(camera_id).strip()
+    current = get_camera_adjustments(clean_id)
+    current.update(adjustments)
+    val = json.dumps(current)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)",
+            (f"camera_adjustments_{clean_id}", val)
+        )
+        conn.commit()
+    return current
 
 
 # --- User Authentication & Management Database Operations ---

@@ -236,22 +236,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       })
       .catch(() => {});
 
-    fetch('/api/stream/tracker-settings')
+    fetch(`/api/stream/tracker-settings?dev=${encodeURIComponent(activeDevice || '0')}`)
       .then((res) => res.json())
       .then((data) => {
-        if (data) setVisionSettings((prev) => ({ ...prev, ...data }));
+        if (data) setVisionSettings((prev) => ({ ...prev, ...(data.settings || data) }));
       })
       .catch(() => {});
-  }, [isOpen, activeTab]);
+  }, [isOpen, activeTab, activeDevice]);
 
   const handleUpdateVisionSetting = async (key: string, value: any) => {
+    const devId = activeDevice || '0';
     const updated = { ...visionSettings, [key]: value };
     setVisionSettings(updated);
     try {
-      const res = await fetch('/api/stream/tracker-settings', {
+      const res = await fetch(`/api/stream/tracker-settings?dev=${encodeURIComponent(devId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated),
+        body: JSON.stringify({
+          camera_id: devId,
+          dev: devId,
+          ...updated
+        }),
       });
       if (res.ok) {
         if (key === 'detect_faces') {

@@ -22,6 +22,7 @@ interface FaceProfilesViewProps {
   onDeleteFace: (id: string) => void;
   onRefresh: () => void;
   userRole?: string;
+  activeDevice?: string;
 }
 
 export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
@@ -30,6 +31,7 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
   onDeleteFace,
   onRefresh,
   userRole = 'admin',
+  activeDevice = '0',
 }) => {
   const isViewer = userRole === 'viewer';
   const [searchQuery, setSearchQuery] = useState('');
@@ -39,25 +41,32 @@ export const FaceProfilesView: React.FC<FaceProfilesViewProps> = ({
   const [isUpdatingEngine, setIsUpdatingEngine] = useState(false);
 
   React.useEffect(() => {
-    fetch('/api/stream/tracker-settings')
+    fetch(`/api/stream/tracker-settings?dev=${encodeURIComponent(activeDevice)}`)
       .then((res) => res.json())
       .then((data) => {
-        if (data && data.detect_faces !== undefined) {
-          setIsDetectFacesActive(Boolean(data.detect_faces));
+        const settingsData = data.settings || data;
+        if (settingsData && settingsData.detect_faces !== undefined) {
+          setIsDetectFacesActive(Boolean(settingsData.detect_faces));
         }
       })
       .catch(() => {});
-  }, []);
+  }, [activeDevice]);
 
   const handleToggleEngine = async () => {
     setIsUpdatingEngine(true);
     const nextState = !isDetectFacesActive;
     try {
-      const getRes = await fetch('/api/stream/tracker-settings');
-      const curSettings = getRes.ok ? await getRes.json() : {};
-      const updated = { ...curSettings, detect_faces: nextState };
+      const getRes = await fetch(`/api/stream/tracker-settings?dev=${encodeURIComponent(activeDevice)}`);
+      const rawData = getRes.ok ? await getRes.json() : {};
+      const curSettings = rawData.settings || rawData;
+      const updated = {
+        ...curSettings,
+        camera_id: activeDevice,
+        dev: activeDevice,
+        detect_faces: nextState
+      };
 
-      const res = await fetch('/api/stream/tracker-settings', {
+      const res = await fetch(`/api/stream/tracker-settings?dev=${encodeURIComponent(activeDevice)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated),

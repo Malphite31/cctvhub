@@ -33,7 +33,7 @@ class MotionDetector:
 
     def _get_default_settings(self) -> Dict[str, Any]:
         return {
-            "enabled": True,
+            "enabled": False, # Disabled by default per camera until explicitly activated
             "sensitivity": 50, # 1-100
             "action": "both", # "snapshot" | "record" | "both" | "log_only"
             "cooldown_seconds": 10,
@@ -44,7 +44,7 @@ class MotionDetector:
     def get_camera_settings(self, camera_id: str = "0") -> Dict[str, Any]:
         norm_id = _normalize_id(camera_id)
         raw_id = str(camera_id)
-        for check_key in [f"motion_settings_{norm_id}", f"motion_settings_{raw_id}", "motion_settings_default"]:
+        for check_key in [f"motion_settings_{norm_id}", f"motion_settings_{raw_id}"]:
             try:
                 with get_db() as conn:
                     cursor = conn.cursor()

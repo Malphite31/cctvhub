@@ -70,23 +70,32 @@ class CustomZoneAnalyzer:
         return is_triggered, delta_pct
 
 
+def _normalize_id(cid: Any) -> str:
+    s = str(cid).strip()
+    if s.startswith("/dev/video"):
+        return s.replace("/dev/video", "")
+    if s.lower().startswith("cam "):
+        return s[4:].strip()
+    return s
+
+
 class VisionTracker:
     """
     Tactical Vision HUD & Biometric Face Tracker with dynamic scanline visualization.
     """
     def __init__(self):
-        self.enabled = True
-        self.show_bounding_boxes = True
-        self.show_corner_markers = True
-        self.show_center_reticles = True
-        self.show_metadata_tags = True
-        self.show_motion_vectors = True
-        self.detect_faces = False # Disabled by default for ultra-low CPU utilization
-        self.detect_motion = True
-        self.hud_theme = "cyber_blue"
-
-        # Load persisted settings from database
-        self._load_persisted_settings()
+        self._default_settings = {
+            "enabled": True,
+            "show_bounding_boxes": True,
+            "show_corner_markers": True,
+            "show_center_reticles": True,
+            "show_metadata_tags": True,
+            "show_motion_vectors": True,
+            "detect_faces": False, # Disabled by default for ultra-low CPU utilization
+            "detect_motion": False, # Disabled by default per camera until explicitly activated
+            "hud_theme": "cyber_blue",
+        }
+        self.camera_settings: Dict[str, Dict[str, Any]] = {}
 
         # Classifiers
         self.face_cascade = None
@@ -200,53 +209,69 @@ class VisionTracker:
         except Exception:
             pass
 
-    def update_settings(self, settings_dict: Dict[str, Any]):
-        if "enabled" in settings_dict: self.enabled = bool(settings_dict["enabled"])
-        if "show_bounding_boxes" in settings_dict: self.show_bounding_boxes = bool(settings_dict["show_bounding_boxes"])
-        if "show_corner_markers" in settings_dict: self.show_corner_markers = bool(settings_dict["show_corner_markers"])
-        if "show_center_reticles" in settings_dict: self.show_center_reticles = bool(settings_dict["show_center_reticles"])
-        if "show_metadata_tags" in settings_dict: self.show_metadata_tags = bool(settings_dict["show_metadata_tags"])
-        if "show_motion_vectors" in settings_dict: self.show_motion_vectors = bool(settings_dict["show_motion_vectors"])
-        if "detect_faces" in settings_dict: self.detect_faces = bool(settings_dict["detect_faces"])
-        if "detect_motion" in settings_dict: self.detect_motion = bool(settings_dict["detect_motion"])
-        if "hud_theme" in settings_dict: self.hud_theme = str(settings_dict["hud_theme"])
+    def update_settings(self, settings_dict: Dict[str, Any], camera_id: Optional[str] = None) -> Dict[str, Any]:
+        target_id = settings_dict.get("camera_id") or settings_dict.get("dev") or camera_id or "0"
+        norm_id = _normalize_id(target_id)
+        current = self.get_settings(norm_id)
+        for k in ["enabled", "show_bounding_boxes", "show_corner_markers", "show_center_reticles",
+                  "show_metadata_tags", "show_motion_vectors", "detect_faces", "detect_motion", "hud_theme"]:
+            if k in settings_dict:
+                current[k] = settings_dict[k]
 
-        # Persist to database
+        self.camera_settings[norm_id] = current
+
+        # Persist to database per camera
         try:
-            val = json.dumps(self.get_settings())
+            val = json.dumps(current)
             with get_db() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "INSERT OR REPLACE INTO system_config (key, value) VALUES ('vision_tracker_settings', ?)",
-                    (val,)
+                    "INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)",
+                    (f"vision_tracker_settings_{norm_id}", val)
                 )
                 conn.commit()
         except Exception as e:
-            logger.warning(f"Error saving vision tracker settings: {e}")
+            logger.warning(f"Error saving vision tracker settings for camera {norm_id}: {e}")
 
-    def get_settings(self) -> Dict[str, Any]:
-        return {
-            "enabled": self.enabled,
-            "show_bounding_boxes": self.show_bounding_boxes,
-            "show_corner_markers": self.show_corner_markers,
-            "show_center_reticles": self.show_center_reticles,
-            "show_metadata_tags": self.show_metadata_tags,
-            "show_motion_vectors": self.show_motion_vectors,
-            "detect_faces": self.detect_faces,
-            "detect_motion": self.detect_motion,
-            "hud_theme": self.hud_theme,
-        }
+        return dict(current)
+
+    def get_settings(self, camera_id: Optional[str] = None) -> Dict[str, Any]:
+        norm_id = _normalize_id(camera_id if camera_id is not None else "0")
+        if norm_id in self.camera_settings:
+            return dict(self.camera_settings[norm_id])
+
+        # Try to load from database
+        for check_key in [f"vision_tracker_settings_{norm_id}", "vision_tracker_settings"]:
+            try:
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT value FROM system_config WHERE key = ?", (check_key,))
+                    row = cursor.fetchone()
+                    if row and row[0]:
+                        data = json.loads(row[0])
+                        cfg = dict(self._default_settings)
+                        cfg.update(data)
+                        self.camera_settings[norm_id] = cfg
+                        return cfg
+            except Exception:
+                pass
+
+        cfg = dict(self._default_settings)
+        self.camera_settings[norm_id] = cfg
+        return cfg
 
     def process_frame(self, frame: np.ndarray, camera_id: str = "0") -> Tuple[np.ndarray, List[Dict[str, Any]]]:
         """
         Processes frame for custom-selected objects/zones and biometric face scanning.
         Optimized with downscaled Haar inference and frame-skipping for ultra-low CPU utilization.
         """
-        if frame is None or not self.enabled:
+        cam_str = _normalize_id(camera_id)
+        cfg = self.get_settings(cam_str)
+
+        if frame is None or not cfg.get("enabled", True):
             return frame, []
 
         h, w = frame.shape[:2]
-        cam_str = str(camera_id)
         self._reload_custom_trackers(cam_str)
         self._reload_enrolled_faces()
 
@@ -257,7 +282,7 @@ class VisionTracker:
         active_detections = []
 
         # 1. Biometric Facial Recognition & Tactical Scanline Visualization (Every 4th frame, downscaled to 360px)
-        if self.detect_faces and self.face_cascade is not None:
+        if cfg.get("detect_faces", False) and self.face_cascade is not None:
             should_run_face = (frame_idx % 4 == 0) or (cam_str not in self._cached_rendered_face_data_by_cam)
 
             if should_run_face:

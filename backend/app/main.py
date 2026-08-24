@@ -10,7 +10,7 @@ from .core.config import settings
 from .api import stream, recordings, telemetry, storage, faces, events, trackers, cameras, auth, motion
 from .services.camera_worker import camera_manager
 from .services.audio_worker import audio_worker
-from .core.database import init_db, list_configured_cameras
+from .core.database import init_db, list_configured_cameras, get_active_camera
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -28,8 +28,12 @@ async def lifespan(app: FastAPI):
 
     try:
         configured = list_configured_cameras()
+        active_id = get_active_camera()
         for cam in configured:
             camera_manager.get_worker(cam["id"], source=cam.get("source"))
+        if active_id:
+            camera_manager.set_active_device(active_id)
+            camera_manager.get_worker(active_id)
     except Exception:
         pass
 

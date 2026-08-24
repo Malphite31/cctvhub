@@ -57,7 +57,9 @@ export const App: React.FC = () => {
 
   // Real Camera Hardware State
   const [devices, setDevices] = useState<CameraDevice[]>([]);
-  const [activeDevice, setActiveDevice] = useState<string>('0');
+  const [activeDevice, setActiveDevice] = useState<string>(() => {
+    return localStorage.getItem('cctv_active_device') || '0';
+  });
 
   // Storage Location State
   const [storageLocation, setStorageLocation] = useState<StorageLocationInfo | null>(null);
@@ -123,14 +125,38 @@ export const App: React.FC = () => {
 
   const fetchDevices = async () => {
     try {
-      const res = await fetch('/api/cameras/list');
+      const [res, streamCfgRes] = await Promise.all([
+        fetch('/api/cameras/list'),
+        fetch('/api/stream/config').catch(() => null)
+      ]);
+
+      let backendActiveDevice: string | null = null;
+      if (streamCfgRes && streamCfgRes.ok) {
+        try {
+          const cfgData = await streamCfgRes.json();
+          if (cfgData && cfgData.active_device !== undefined) {
+            backendActiveDevice = String(cfgData.active_device);
+          }
+        } catch {}
+      }
+
       if (res.ok) {
         const data = await res.json();
         const camList = data.cameras || data.devices || [];
         setDevices(camList);
         if (camList.length > 0) {
-          if (!activeDevice || !camList.some((d: any) => d.device === activeDevice)) {
-            setActiveDevice(camList[0].device);
+          const savedLocal = localStorage.getItem('cctv_active_device');
+          if (savedLocal && camList.some((d: any) => String(d.device) === savedLocal)) {
+            setActiveDevice(savedLocal);
+          } else if (backendActiveDevice && camList.some((d: any) => String(d.device) === backendActiveDevice)) {
+            setActiveDevice(backendActiveDevice);
+            localStorage.setItem('cctv_active_device', backendActiveDevice);
+          } else if (activeDevice && camList.some((d: any) => String(d.device) === activeDevice)) {
+            localStorage.setItem('cctv_active_device', activeDevice);
+          } else {
+            const firstDev = String(camList[0].device);
+            setActiveDevice(firstDev);
+            localStorage.setItem('cctv_active_device', firstDev);
           }
         }
       }
@@ -284,11 +310,12 @@ export const App: React.FC = () => {
   }, [isFaceRecognitionEnabled, activeTab]);
 
   const fetchTrackerSettings = () => {
-    fetch('/api/stream/tracker-settings')
+    fetch(`/api/stream/tracker-settings?dev=${encodeURIComponent(activeDevice || '0')}`)
       .then((res) => res.json())
       .then((data) => {
-        if (data && data.detect_faces !== undefined) {
-          setIsFaceRecognitionEnabled(Boolean(data.detect_faces));
+        const settingsData = data.settings || data;
+        if (settingsData && settingsData.detect_faces !== undefined) {
+          setIsFaceRecognitionEnabled(Boolean(settingsData.detect_faces));
         }
       })
       .catch(() => {});
@@ -336,11 +363,13 @@ export const App: React.FC = () => {
 
   // Handlers
   const handleSelectCamera = async (dev: string) => {
-    setActiveDevice(dev);
+    const devStr = String(dev);
+    setActiveDevice(devStr);
+    localStorage.setItem('cctv_active_device', devStr);
     try {
-      await fetch(`/api/stream/switch-camera?device=${dev}`, { method: 'POST' });
+      await fetch(`/api/stream/switch-camera?device=${encodeURIComponent(devStr)}`, { method: 'POST' });
     } catch {}
-    showToast(`Switched active camera to Dev ${dev}`);
+    showToast(`Switched active camera to Dev ${devStr}`);
   };
 
   const handleSelectAudioDevice = async (devIndex: number | string) => {
@@ -803,6 +832,7 @@ export const App: React.FC = () => {
                 onDeleteFace={handleDeleteFace}
                 onRefresh={fetchFaces}
                 userRole={currentUser.role}
+                activeDevice={activeDevice}
               />
             </div>
           )}

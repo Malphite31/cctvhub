@@ -285,6 +285,8 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
   useEffect(() => {
     fetchAdjustments(activeDevice);
+    setStreamKey(Date.now());
+    setStreamError(false);
   }, [activeDevice]);
 
   const updateAdjustments = async (updates: Partial<{
@@ -388,21 +390,22 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     return () => clearInterval(interval);
   }, [activeDevice]);
 
-  // Fetch initial tracker settings
+  // Fetch tracker settings for active camera
   useEffect(() => {
+    if (!activeDevice) return;
     const fetchTrackerSettings = async () => {
       try {
-        const res = await fetch('/api/stream/tracker-settings');
+        const res = await fetch(`/api/stream/tracker-settings?dev=${encodeURIComponent(activeDevice)}`);
         if (res.ok) {
           const data = await res.json();
-          setTrackerSettings((prev) => ({ ...prev, ...data }));
+          setTrackerSettings((prev) => ({ ...prev, ...(data.settings || data) }));
         }
       } catch {
         // Fallback
       }
     };
     fetchTrackerSettings();
-  }, []);
+  }, [activeDevice]);
 
   // Poll real-time motion detection status
   useEffect(() => {
@@ -578,10 +581,14 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     const updated = { ...trackerSettings, ...newSettings };
     setTrackerSettings(updated);
     try {
-      await fetch('/api/stream/tracker-settings', {
+      await fetch(`/api/stream/tracker-settings?dev=${encodeURIComponent(activeDevice)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
+        body: JSON.stringify({
+          camera_id: activeDevice,
+          dev: activeDevice,
+          ...updated
+        })
       });
     } catch {
       // Ignore
@@ -1175,41 +1182,48 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                   </div>
                 )}
 
-                {/* Top Left Live Badge & Active Trackers Indicator */}
-                <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 pointer-events-none z-10">
-                  <div className="bg-black/75 backdrop-blur-xs px-2 py-0.5 rounded-md border border-[#222222] flex items-center gap-1.5 text-[10px] font-mono text-white">
-                    <span className={`h-2 w-2 rounded-full ${isPlaying ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                    <span>{isPlaying ? 'LIVE' : 'PAUSED'}</span>
+                {/* Unified Top HUD Video Overlay Bar (Live, Motion, Tracking, Transmission & Timecode) */}
+                <div className="absolute top-2 left-2 right-2 sm:top-2.5 sm:left-2.5 sm:right-2.5 flex items-center justify-between gap-1 sm:gap-2 pointer-events-none z-10 select-none">
+                  {/* Left Badges: Live Status, Motion Alert, Active Trackers */}
+                  <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-wrap">
+                    {/* Live / Paused Badge */}
+                    <div className="bg-black/80 backdrop-blur-xs px-1.5 sm:px-2 py-0.5 rounded-md border border-[#222222] flex items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[10px] font-mono text-white shrink-0 shadow-sm">
+                      <span className={`h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full ${isPlaying ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                      <span>{isPlaying ? 'LIVE' : 'PAUSED'}</span>
+                    </div>
+
+                    {/* Motion Detected Alert Badge */}
+                    {isMotionDetected && (
+                      <div className="bg-amber-500/25 backdrop-blur-xs px-1.5 sm:px-2 py-0.5 rounded-md border border-amber-500/60 flex items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[10px] font-mono text-amber-300 animate-pulse shadow-lg shadow-amber-500/10 shrink-0">
+                        <Activity className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-amber-400" />
+                        <span>MOTION {motionLevel > 0 ? `(${motionLevel}%)` : ''}</span>
+                      </div>
+                    )}
+
+                    {/* Object Trackers Badge */}
+                    {customTrackers.length > 0 && trackerSettings.enabled && (
+                      <div className="hidden xs:flex bg-black/80 backdrop-blur-xs px-1.5 sm:px-2 py-0.5 rounded-md border border-[#3B82F6]/40 items-center gap-1 text-[9px] sm:text-[10px] font-mono text-[#3B82F6] shrink-0">
+                        <Crosshair className="h-2.5 w-2.5 text-[#3B82F6]" />
+                        <span>{customTrackers.length} {customTrackers.length === 1 ? 'OBJ' : 'OBJS'}</span>
+                      </div>
+                    )}
                   </div>
 
-                  {isMotionDetected && (
-                    <div className="bg-amber-500/20 backdrop-blur-xs px-2 py-0.5 rounded-md border border-amber-500/60 flex items-center gap-1.5 text-[10px] font-mono text-amber-300 animate-pulse shadow-lg shadow-amber-500/10">
-                      <Activity className="h-2.5 w-2.5 text-amber-400" />
-                      <span>MOTION {motionLevel > 0 ? `(${motionLevel}%)` : 'DETECTED'}</span>
+                  {/* Right Badges: Transmission Speed & Timecode */}
+                  <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto">
+                    {/* Live Transmission Speed Overlay */}
+                    <div className="bg-black/80 backdrop-blur-xs px-1.5 sm:px-2 py-0.5 rounded-md border border-[#222222] flex items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[10px] font-mono text-zinc-300 shadow-sm shrink-0">
+                      <Wifi className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-emerald-400 animate-pulse shrink-0" />
+                      <span className="text-emerald-400 font-bold tracking-tight">{liveSpeedMbps}</span>
+                      <span className="text-zinc-600 hidden sm:inline">•</span>
+                      <span className="text-zinc-300 font-semibold hidden sm:inline">{currentCam?.fps || stats?.fps || 60} FPS</span>
                     </div>
-                  )}
 
-                  {customTrackers.length > 0 && trackerSettings.enabled && (
-                    <div className="bg-black/75 backdrop-blur-xs px-2 py-0.5 rounded-md border border-[#3B82F6]/40 flex items-center gap-1 text-[10px] font-mono text-[#3B82F6]">
-                      <Crosshair className="h-2.5 w-2.5" />
-                      <span>{customTrackers.length} OBJECT{customTrackers.length > 1 ? 'S' : ''} TRACKED</span>
+                    {/* Live Timecode Overlay (Time only on mobile, Full Date+Time on sm+) */}
+                    <div className="bg-black/80 backdrop-blur-xs px-1.5 sm:px-2 py-0.5 rounded-md border border-[#222222] text-[9px] sm:text-[10px] font-mono text-zinc-300 shadow-sm shrink-0">
+                      <span className="hidden sm:inline">{currentTime || '2026-08-23 19:12:05'}</span>
+                      <span className="sm:hidden">{currentTime ? currentTime.split(' ')[1] || currentTime : '19:12:05'}</span>
                     </div>
-                  )}
-                </div>
-
-                {/* Top Right Live Transmission Speed & Timecode Overlay */}
-                <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 pointer-events-none z-10">
-                  {/* TRANSMISSION SPEED OVERLAY */}
-                  <div className="bg-black/80 backdrop-blur-xs px-2 py-0.5 rounded-md border border-[#222222] flex items-center gap-1.5 text-[10px] font-mono text-zinc-300 shadow-sm">
-                    <Wifi className="h-3 w-3 text-emerald-400 animate-pulse shrink-0" />
-                    <span className="text-emerald-400 font-bold tracking-tight">{liveSpeedMbps}</span>
-                    <span className="text-zinc-600">•</span>
-                    <span className="text-zinc-300 font-semibold">{currentCam?.fps || stats?.fps || 60} FPS</span>
-                  </div>
-
-                  {/* TIMECODE */}
-                  <div className="bg-black/75 backdrop-blur-xs px-2 py-0.5 rounded-md border border-[#222222] text-[10px] font-mono text-zinc-300">
-                    {currentTime || '2026-08-23 19:12:05'}
                   </div>
                 </div>
               </div>
