@@ -782,25 +782,6 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
             <span className="inline">{isPlaying ? 'Pause' : 'Play'}</span>
           </button>
 
-          {/* HD / SD Transmission Mode Quick Switch */}
-          <button
-            type="button"
-            onClick={() => handleToggleQualityMode()}
-            className={`flex items-center gap-1 px-2 py-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-mono font-semibold border transition-colors shrink-0 ${
-              qualityMode === 'hd'
-                ? isFloating
-                  ? 'bg-emerald-500/30 text-emerald-300 border-emerald-500/60 backdrop-blur-md shadow-lg'
-                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30'
-                : isFloating
-                ? 'bg-amber-500/30 text-amber-300 border-amber-500/60 backdrop-blur-md shadow-lg'
-                : 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30'
-            }`}
-            title={qualityMode === 'hd' ? 'HD Mode Active (1080p). Click to switch to SD Data Saver Mode' : 'SD Mode Active (Low Bandwidth). Click to switch to HD Mode'}
-          >
-            <span className={`h-1.5 w-1.5 rounded-full ${qualityMode === 'hd' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-            <span>{qualityMode.toUpperCase()}</span>
-          </button>
-
           {/* Quick Snapshot */}
           <button
             type="button"
@@ -1015,23 +996,6 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
           <h3 className="font-semibold text-xs sm:text-sm text-white tracking-tight font-sans truncate">
             {hasCameras ? currentCam.name : 'No Cameras Configured'}
           </h3>
-
-          {/* Interactive HD / SD Mode Toggle Badge */}
-          {hasCameras && (
-            <button
-              type="button"
-              onClick={() => handleToggleQualityMode()}
-              className={`flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded border transition-all shrink-0 ${
-                qualityMode === 'hd'
-                  ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/50 shadow-xs'
-                  : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/50 shadow-xs'
-              }`}
-              title={qualityMode === 'hd' ? 'Currently in HD Mode (1080p). Click to switch to SD Low Bandwidth Mode' : 'Currently in SD Mode (480p Low Bandwidth). Click to switch to HD Mode'}
-            >
-              <span className={`h-1.5 w-1.5 rounded-full ${qualityMode === 'hd' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-              <span>{qualityMode === 'hd' ? 'HD MODE' : 'SD (SAVER)'}</span>
-            </button>
-          )}
 
           {/* Interactive Resolution Dropdown Badge */}
           {hasCameras && (
@@ -1373,14 +1337,10 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
                   {/* Right Badges: Transmission Speed & Timecode */}
                   <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto">
-                    {/* Live Transmission Speed & Quality Mode Overlay */}
+                    {/* Live Transmission Speed Overlay */}
                     <div className="bg-black/80 backdrop-blur-xs px-1.5 sm:px-2 py-0.5 rounded-md border border-[#222222] flex items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[10px] font-mono text-zinc-300 shadow-sm shrink-0">
                       <Wifi className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-emerald-400 animate-pulse shrink-0" />
                       <span className="text-emerald-400 font-bold tracking-tight">{liveSpeedMbps}</span>
-                      <span className="text-zinc-600">•</span>
-                      <span className={`font-bold ${qualityMode === 'hd' ? 'text-emerald-400' : 'text-amber-400'}`}>
-                        {qualityMode.toUpperCase()}
-                      </span>
                       <span className="text-zinc-600 hidden sm:inline">•</span>
                       <span className="text-zinc-300 font-semibold hidden sm:inline">{currentCam?.fps || stats?.fps || 60} FPS</span>
                     </div>
