@@ -100,7 +100,7 @@ User=root
 WorkingDirectory=/opt/cctv-hub
 Environment="PATH=/opt/cctv-hub/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStartPre=-/bin/sh -c "killall -9 go2rtc 2>/dev/null || true"
-ExecStart=/bin/sh -c "/usr/local/bin/go2rtc -config /opt/cctv-hub/backend/streaming/go2rtc.yaml & exec /opt/cctv-hub/.venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+ExecStart=/bin/sh -c "/usr/local/bin/go2rtc -config /opt/cctv-hub/backend/streaming/go2rtc.yaml & exec /opt/cctv-hub/.venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 18860"
 Restart=always
 RestartSec=2
 KillMode=mixed
@@ -126,7 +126,7 @@ HOST_IP=$(hostname -I | awk '{print $1}' || echo "localhost")
 echo "=========================================================="
 echo "  Installation Successful!                                "
 echo "=========================================================="
-echo "  Dashboard URL   : http://${HOST_IP}:8000"
+echo "  Dashboard URL   : http://${HOST_IP}:18860"
 echo "  Service Status  : systemctl status cctv-hub"
 echo "  1-Word Updater  : cctv-update"
 echo "=========================================================="
