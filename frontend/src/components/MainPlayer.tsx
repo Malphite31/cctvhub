@@ -181,26 +181,6 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     hud_theme: 'cyber_blue',
   });
 
-  // Mobile Orientation & Fullscreen Auto Landscape
-  const [isMobilePortrait, setIsMobilePortrait] = useState(false);
-  const [forceLandscapeRotate, setForceLandscapeRotate] = useState(true);
-
-  useEffect(() => {
-    const checkOrientation = () => {
-      const isMobile = window.innerWidth < 1024 || 'ontouchstart' in window;
-      const isPortrait = window.innerHeight > window.innerWidth;
-      setIsMobilePortrait(isMobile && isPortrait);
-    };
-
-    checkOrientation();
-    window.addEventListener('resize', checkOrientation);
-    window.addEventListener('orientationchange', checkOrientation);
-    return () => {
-      window.removeEventListener('resize', checkOrientation);
-      window.removeEventListener('orientationchange', checkOrientation);
-    };
-  }, []);
-
   const lockLandscape = async () => {
     try {
       if (screen.orientation && (screen.orientation as any).lock) {
@@ -1214,29 +1194,18 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
       <div
         ref={playerContainerRef}
         style={
-          isFullscreen && isMobilePortrait && forceLandscapeRotate
-            ? {
-                position: 'fixed',
-                top: '50%',
-                left: '50%',
-                width: '100dvh',
-                height: '100dvw',
-                transform: 'translate(-50%, -50%) rotate(90deg)',
-                transformOrigin: 'center center',
-                zIndex: 99999,
-                maxWidth: 'none',
-                maxHeight: 'none',
-              }
-            : isFullscreen
+          isFullscreen
             ? {
                 position: 'fixed',
                 top: 0,
                 left: 0,
                 right: 0,
                 bottom: 0,
-                width: '100dvw',
-                height: '100dvh',
+                width: '100vw',
+                height: '100vh',
                 zIndex: 99999,
+                margin: 0,
+                padding: 0,
                 maxWidth: 'none',
                 maxHeight: 'none',
               }
@@ -1244,7 +1213,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
         }
         className={`relative w-full flex-1 min-h-0 bg-black overflow-hidden flex items-center justify-center group ${
           isFullscreen
-            ? 'h-[100dvh] w-[100dvw] max-h-none max-w-none rounded-none border-none aspect-auto m-0 p-0'
+            ? 'fixed inset-0 !w-screen !h-screen !h-[100dvh] !w-[100dvw] !max-w-none !max-h-none rounded-none border-none aspect-auto m-0 p-0 z-[99999]'
             : 'rounded-xl border border-[#222222] aspect-video'
         }`}
       >
@@ -1509,25 +1478,23 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
               </div>
             )}
 
-            {/* Floating Exit & Rotate Buttons for Fullscreen Mode */}
+            {/* Floating Exit & Aspect Controls for Fullscreen Mode */}
             {isFullscreen && (
-              <div className="fixed top-4 right-4 z-[10000] flex items-center gap-2">
-                {isMobilePortrait && (
-                  <button
-                    type="button"
-                    onClick={() => setForceLandscapeRotate(!forceLandscapeRotate)}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-black/85 text-white border border-white/20 hover:bg-black transition-colors shadow-2xl backdrop-blur-md text-[11px] font-mono"
-                    title="Toggle Auto-Landscape Rotation"
-                  >
-                    <RotateCw className={`h-3.5 w-3.5 ${forceLandscapeRotate ? 'text-[#3B82F6]' : 'text-zinc-400'}`} />
-                    <span>{forceLandscapeRotate ? '90° Landscape' : 'Portrait'}</span>
-                  </button>
-                )}
+              <div className="fixed top-3 right-3 sm:top-4 sm:right-4 z-[10000] flex items-center gap-1.5 sm:gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleFitMode}
+                  className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-full bg-black/85 text-white border border-white/20 hover:bg-black transition-colors shadow-2xl backdrop-blur-md text-[11px] font-mono cursor-pointer"
+                  title={objectFit === 'cover' ? 'Switch to Fit (Original Ratio)' : 'Switch to Fill (Edge-to-Edge)'}
+                >
+                  <Scan className="h-3.5 w-3.5 text-[#3B82F6]" />
+                  <span>{objectFit === 'cover' ? 'Fill' : 'Fit'}</span>
+                </button>
 
                 <button
                   type="button"
                   onClick={handleToggleFullscreen}
-                  className="p-2.5 rounded-full bg-black/85 text-white border border-white/20 hover:bg-black transition-colors shadow-2xl backdrop-blur-md"
+                  className="p-2 sm:p-2.5 rounded-full bg-black/85 text-white border border-white/20 hover:bg-black transition-colors shadow-2xl backdrop-blur-md cursor-pointer"
                   title="Exit Fullscreen"
                 >
                   <Minimize2 className="h-4 w-4 text-white" />
