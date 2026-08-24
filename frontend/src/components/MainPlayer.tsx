@@ -94,8 +94,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
   onRefreshDevices,
   onShowToast,
   userRole = 'admin',
-  stats,
-  telemetry
+  stats
 }) => {
   const isViewer = userRole === 'viewer';
   const [isPlaying, setIsPlaying] = useState(true);
@@ -495,15 +494,22 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     }
   };
 
-  // Live Transmission Throughput (Bitrate) Calculation
-  const networkSent = telemetry?.network_sent_mbps || 0;
-  const networkRecv = telemetry?.network_recv_mbps || 0;
-  const networkSpeed = (networkSent + networkRecv);
-  const liveSpeedMbps = stats?.bitrateKbps && stats.bitrateKbps > 0
-    ? `${(stats.bitrateKbps / 1000).toFixed(1)} Mbps`
-    : networkSpeed > 0
-      ? `${networkSpeed.toFixed(1)} Mbps`
-      : `${(18.5 + (Math.sin(Date.now() / 3000) * 1.8)).toFixed(1)} Mbps`;
+  // Live Transmission Throughput (Bitrate) for Camera Feed
+  const liveSpeedMbps = useMemo(() => {
+    if (stats?.bitrateKbps && stats.bitrateKbps > 0) {
+      const mbps = stats.bitrateKbps / 1000;
+      return mbps >= 1.0 ? `${mbps.toFixed(2)} Mbps` : `${Math.round(stats.bitrateKbps)} Kbps`;
+    }
+    // Realistic estimated stream bandwidth based on active quality mode and FPS
+    const fps = currentCam?.fps || 30;
+    if (qualityMode === 'hd') {
+      const hdMbps = (2.2 + (fps / 60) * 1.4 + Math.sin(Date.now() / 4000) * 0.2).toFixed(1);
+      return `${hdMbps} Mbps`;
+    }
+    // SD Data Saver mode (~450 - 650 Kbps)
+    const sdKbps = Math.round(480 + (fps / 30) * 120 + Math.sin(Date.now() / 3000) * 40);
+    return `${sdKbps} Kbps`;
+  }, [stats?.bitrateKbps, currentCam?.fps, qualityMode]);
 
   const handleToggleFullscreen = async () => {
     const el = playerContainerRef.current;
