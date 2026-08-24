@@ -212,19 +212,52 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
       // 2. Connect WebSocket
       connectWs();
 
-      // 3. Request microphone access with progressive fallback
-      let stream: MediaStream;
+      // 3. Request microphone access with progressive fallback & Insecure Context detection
+      let stream: MediaStream | null = null;
+
+      const getMediaFunc = navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices) ||
+        (navigator as any).getUserMedia?.bind(navigator) ||
+        (navigator as any).webkitGetUserMedia?.bind(navigator) ||
+        (navigator as any).mozGetUserMedia?.bind(navigator);
+
+      if (!getMediaFunc) {
+        if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+          throw new Error('Microphone blocked on insecure HTTP. Please open https://cctv.benzsiangco.site with HTTPS.');
+        }
+        throw new Error('Microphone not supported on this browser.');
+      }
+
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        });
-      } catch {
+        if (navigator.mediaDevices?.getUserMedia) {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+        } else {
+          stream = await new Promise<MediaStream>((resolve, reject) => {
+            (getMediaFunc as any)({ audio: true }, resolve, reject);
+          });
+        }
+      } catch (firstErr) {
         // Fallback for strict mobile browsers
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        try {
+          if (navigator.mediaDevices?.getUserMedia) {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          } else {
+            stream = await new Promise<MediaStream>((resolve, reject) => {
+              (getMediaFunc as any)({ audio: true }, resolve, reject);
+            });
+          }
+        } catch {
+          throw firstErr;
+        }
+      }
+
+      if (!stream) {
+        throw new Error('Failed to acquire audio stream');
       }
 
       mediaStreamRef.current = stream;
