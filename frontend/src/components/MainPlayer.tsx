@@ -732,32 +732,48 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
   const supportedResolutions: CameraResolutionOption[] = useMemo(() => {
     const standard: CameraResolutionOption[] = [
+      { label: '4K UHD (3840x2160)', value: '3840x2160', fps: '60 FPS', width: 3840, height: 2160, tier: 'hd' },
+      { label: '2K QHD (2560x1440)', value: '2560x1440', fps: '60 FPS', width: 2560, height: 1440, tier: 'hd' },
       { label: '1080p FHD • Crystal Clear', value: '1920x1080', fps: '60 FPS', width: 1920, height: 1080, tier: 'hd' },
       { label: '720p HD • High Definition', value: '1280x720', fps: '60 FPS', width: 1280, height: 720, tier: 'hd' },
       { label: '480p SD • Data Saver', value: '854x480', fps: '60 FPS', width: 854, height: 480, tier: 'sd' },
-      { label: '360p Fast • Low Bandwidth', value: '640x360', fps: '60 FPS', width: 640, height: 360, tier: 'sd' },
       { label: 'VGA Standard (640x480)', value: '640x480', fps: '60 FPS', width: 640, height: 480, tier: 'sd' },
+      { label: '360p Fast • Low Bandwidth', value: '640x360', fps: '60 FPS', width: 640, height: 360, tier: 'sd' },
+      { label: '240p Mobile • Ultra Light', value: '426x240', fps: '30 FPS', width: 426, height: 240, tier: 'sd' },
+      { label: 'QVGA Economy (320x240)', value: '320x240', fps: '30 FPS', width: 320, height: 240, tier: 'sd' },
     ];
 
     const hardware: CameraResolutionOption[] = (currentCam?.supported_resolutions && currentCam.supported_resolutions.length > 0)
-      ? currentCam.supported_resolutions
+      ? currentCam.supported_resolutions.map(r => {
+          const wVal = r.width || parseInt(r.value.split('x')[0], 10) || 1920;
+          const hVal = r.height || parseInt(r.value.split('x')[1], 10) || 1080;
+          return {
+            ...r,
+            width: wVal,
+            height: hVal,
+            tier: r.tier || (wVal <= 854 ? 'sd' : 'hd')
+          };
+        })
       : (currentCam?.resolutions && currentCam.resolutions.length > 0)
         ? currentCam.resolutions.map(r => {
             const val = r.includes('(') ? (r.match(/\((.*?)\)/)?.[1] || r) : r;
             const wVal = parseInt(val.split('x')[0], 10) || 1920;
+            const hVal = parseInt(val.split('x')[1], 10) || 1080;
             return {
               label: r,
               value: val,
+              width: wVal,
+              height: hVal,
               fps: `${currentCam.fps || 60} FPS`,
               tier: (wVal <= 854 ? 'sd' : 'hd') as 'sd' | 'hd'
             };
           })
         : [];
 
-    const list = [...hardware];
-    for (const s of standard) {
-      if (!list.some(item => item.value === s.value)) {
-        list.push(s);
+    const list = [...standard];
+    for (const hw of hardware) {
+      if (!list.some(item => item.value === hw.value)) {
+        list.push(hw);
       }
     }
     return list;
@@ -1056,30 +1072,32 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                     <span className="text-[8px] text-[#3B82F6]">Instant Switch</span>
                   </div>
 
-                  {supportedResolutions.map((res) => {
-                    const activeRes = (selectedResolution || currentCam?.resolution || '').split(' ')[0].trim();
-                    const isSelected = res.value.trim() === activeRes || res.label.trim() === activeRes;
-                    const isHd = (res.width && res.width >= 1280) || res.tier === 'hd';
-                    return (
-                      <button
-                        key={res.value}
-                        onClick={() => handleResolutionChange(res)}
-                        className={`w-full text-left px-2 py-1 rounded text-[10px] flex items-center justify-between transition-colors ${
-                          isSelected
-                            ? 'bg-[#3B82F6] text-white font-medium'
-                            : 'text-zinc-300 hover:bg-[#222222]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className={`text-[8px] px-1 py-0.2 rounded font-bold ${isHd ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>
-                            {isHd ? 'HD' : 'SD'}
-                          </span>
-                          <span className="truncate">{res.label}</span>
-                        </div>
-                        <span className={`text-[9px] shrink-0 ml-1.5 ${isSelected ? 'text-white' : 'text-zinc-500'}`}>{res.fps}</span>
-                      </button>
-                    );
-                  })}
+                  <div className="max-h-64 overflow-y-auto space-y-0.5 pr-0.5 no-scrollbar">
+                    {supportedResolutions.map((res) => {
+                      const activeRes = (selectedResolution || currentCam?.resolution || '').split(' ')[0].trim();
+                      const isSelected = res.value.trim() === activeRes || res.label.trim() === activeRes;
+                      const isHd = (res.width && res.width >= 1280) || res.tier === 'hd';
+                      return (
+                        <button
+                          key={res.value}
+                          onClick={() => handleResolutionChange(res)}
+                          className={`w-full text-left px-2 py-1 rounded text-[10px] flex items-center justify-between transition-colors ${
+                            isSelected
+                              ? 'bg-[#3B82F6] text-white font-medium'
+                              : 'text-zinc-300 hover:bg-[#222222]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className={`text-[8px] px-1 py-0.2 rounded font-bold ${isHd ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>
+                              {isHd ? 'HD' : 'SD'}
+                            </span>
+                            <span className="truncate">{res.label}</span>
+                          </div>
+                          <span className={`text-[9px] shrink-0 ml-1.5 ${isSelected ? 'text-white' : 'text-zinc-500'}`}>{res.fps}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

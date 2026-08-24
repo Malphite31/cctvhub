@@ -193,8 +193,14 @@ class CameraWorker:
             self.requested_fps = 60
             self.resolution = "1920x1080"
 
-        # Signal capture loop to renegotiate hardware sensor resolution & clear buffers
-        self._need_reconnect = True
+        # Try on-the-fly hardware property updates without dropping capture pipe
+        if self.cap and self.cap.isOpened():
+            try:
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.requested_width)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.requested_height)
+                self.cap.set(cv2.CAP_PROP_FPS, self.requested_fps)
+            except Exception:
+                pass
 
         # Persist to database
         try:
@@ -234,8 +240,14 @@ class CameraWorker:
             self.quality_mode = "hd"
             self.jpeg_quality = 88
 
-        # Signal capture loop to renegotiate hardware sensor resolution & clear buffers
-        self._need_reconnect = True
+        # Try on-the-fly hardware property updates without dropping capture pipe
+        if self.cap and self.cap.isOpened():
+            try:
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                self.cap.set(cv2.CAP_PROP_FPS, fps)
+            except Exception:
+                pass
 
         # Update configured database camera if exists
         try:
