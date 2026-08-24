@@ -923,6 +923,13 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
             <span className="font-mono font-semibold">
               {isTalking ? 'Talking...' : 'Talk'}
             </span>
+            {isTalking && (
+              <div className="flex items-center gap-0.5 ml-0.5">
+                <span className="w-1 bg-white rounded-full transition-all duration-75" style={{ height: `${Math.max(4, Math.min(12, 4 + (talkVolume / 10)))}px` }} />
+                <span className="w-1 bg-white rounded-full transition-all duration-75" style={{ height: `${Math.max(6, Math.min(15, 6 + (talkVolume / 7)))}px` }} />
+                <span className="w-1 bg-white rounded-full transition-all duration-75" style={{ height: `${Math.max(4, Math.min(12, 4 + (talkVolume / 9)))}px` }} />
+              </div>
+            )}
           </button>
 
           {/* Mute / Audio with Volume Button */}
@@ -1680,6 +1687,27 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
               <p className="text-[10px] text-zinc-500 font-mono">
                 Audio output device on server/camera where your voice is played during Talk.
               </p>
+            </div>
+
+            {/* Live Talk / Voice Broadcast Level Meter */}
+            <div className="pt-2 border-t border-[#222222] space-y-1.5">
+              <div className="flex justify-between text-xs text-zinc-300">
+                <span className="flex items-center gap-1">
+                  <Mic className="h-3 w-3 text-rose-400" />
+                  Voice Broadcast Signal (Talk)
+                </span>
+                <span className={`font-mono text-xs font-semibold ${isTalking ? (talkVolume > 50 ? 'text-rose-400' : 'text-emerald-400') : 'text-zinc-500'}`}>
+                  {isTalking ? `${talkVolume}%` : 'IDLE'}
+                </span>
+              </div>
+              <div className="h-2 w-full bg-[#222222] rounded-full overflow-hidden flex">
+                <div
+                  className={`h-full transition-all duration-75 ${
+                    talkVolume > 65 ? 'bg-rose-500' : talkVolume > 30 ? 'bg-amber-400' : 'bg-emerald-500'
+                  }`}
+                  style={{ width: `${isTalking ? Math.min(100, Math.max(talkVolume > 0 ? 8 : 0, talkVolume)) : 0}%` }}
+                />
+              </div>
             </div>
           </div>
         </div>

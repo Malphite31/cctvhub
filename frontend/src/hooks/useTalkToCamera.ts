@@ -104,13 +104,13 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
   const processFloatSamples = useCallback((inputBuffer: Float32Array, inputSampleRate: number) => {
     if (!inputBuffer || inputBuffer.length === 0 || !isTalkingRef.current) return;
 
-    // Calculate instantaneous RMS volume
+    // Calculate instantaneous RMS volume with boosted sensitivity
     let sum = 0;
     for (let i = 0; i < inputBuffer.length; i++) {
       sum += inputBuffer[i] * inputBuffer[i];
     }
     const rms = Math.sqrt(sum / inputBuffer.length);
-    const level = Math.min(100, Math.round(rms * 320));
+    const level = Math.min(100, Math.round(rms * 450));
     setTalkVolume(level);
 
     const targetSampleRate = 16000;
@@ -129,7 +129,9 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
 
     const pcm16 = new Int16Array(resampled.length);
     for (let i = 0; i < resampled.length; i++) {
-      const s = Math.max(-1, Math.min(1, resampled[i]));
+      // 2.8x clean digital preamp boost for phone microphones
+      const sample = resampled[i] * 2.8;
+      const s = Math.max(-1, Math.min(1, sample));
       pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
     }
 
