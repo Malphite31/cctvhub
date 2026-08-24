@@ -502,19 +502,91 @@ class AudioSpeakerWorker:
             pass
         self.stop()
 
+    def unmute_alsa_card(self, target_dev: Optional[Union[int, str]] = None):
+        """Automatically unmutes and sets 100% volume on Linux ALSA mixer channels."""
+        if platform.system() != "Linux":
+            return
+        
+        cards_to_try = ["0", "1"]
+        if target_dev:
+            m = re.search(r"hw:(\d+)", str(target_dev))
+            if m:
+                cards_to_try = [m.group(1), "1", "0"]
+
+        controls = ["Master", "Speaker", "Headphone", "PCM", "Front", "Playback", "Line Out"]
+        for card_idx in set(cards_to_try):
+            for ctrl in controls:
+                try:
+                    subprocess.run(
+                        ["amixer", "-c", card_idx, "set", ctrl, "unmute", "100%"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=0.5
+                    )
+                except Exception:
+                    pass
+
     def test_sound(self):
-        """Plays a gentle test chime through the currently selected speaker."""
+        """Generates a pleasant 2-tone melodic chime in standard stereo WAV format and plays it directly."""
         try:
-            sample_rate = 16000
-            duration = 0.35
+            target_dev = self.output_device or "default"
+            # 1. Unmute hardware if on Linux
+            if platform.system() == "Linux":
+                self.unmute_alsa_card(target_dev)
+
+            sample_rate = 44100
+            duration = 0.65
             t = np.linspace(0, duration, int(sample_rate * duration), False)
-            tone = 0.3 * np.sin(2 * np.pi * 587.33 * t)
-            fade_len = int(sample_rate * 0.03)
+            half = len(t) // 2
+            tone1 = 0.6 * np.sin(2 * np.pi * 587.33 * t[:half]) # D5
+            tone2 = 0.6 * np.sin(2 * np.pi * 880.00 * t[half:]) # A5
+            tone = np.concatenate([tone1, tone2])
+
+            fade_len = int(sample_rate * 0.04)
             tone[:fade_len] *= np.linspace(0, 1, fade_len)
             tone[-fade_len:] *= np.linspace(1, 0, fade_len)
-            pcm = (tone * 32767).astype(np.int16).tobytes()
-            self.play_chunk(pcm, sample_rate)
-            return True
+
+            pcm_mono = (tone * 32767).astype(np.int16)
+            pcm_stereo = np.column_stack((pcm_mono, pcm_mono)).tobytes()
+
+            if platform.system() == "Linux":
+                import tempfile, wave
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                    wav_path = f.name
+                    with wave.open(f, "wb") as wav_file:
+                        wav_file.setnchannels(2)
+                        wav_file.setsampwidth(2)
+                        wav_file.setframerate(sample_rate)
+                        wav_file.writeframes(pcm_stereo)
+
+                # Determine ALSA target
+                alsa_target = str(target_dev)
+                if alsa_target.startswith("plughw:") or alsa_target.startswith("plug:"):
+                    plug_target = alsa_target
+                elif alsa_target.startswith("hw:"):
+                    plug_target = "plug" + alsa_target
+                elif alsa_target.isdigit():
+                    plug_target = f"plughw:{alsa_target},0"
+                elif alsa_target == "default":
+                    plug_target = "plug:default"
+                else:
+                    plug_target = f"plug:{alsa_target}"
+
+                # Try playing via aplay with plug device
+                res = subprocess.run(["aplay", "-D", plug_target, wav_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+                if res.returncode != 0:
+                    # Fallback to direct analog card 1
+                    subprocess.run(["aplay", "-D", "plughw:1,0", wav_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+                    subprocess.run(["aplay", "-D", "default", wav_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+
+                try:
+                    os.remove(wav_path)
+                except Exception:
+                    pass
+                return True
+            else:
+                self.play_chunk(pcm_mono.tobytes(), client_sample_rate=sample_rate)
+                return True
         except Exception as e:
             logger.error(f"Failed to play test sound: {e}")
             return False
@@ -531,23 +603,26 @@ class AudioSpeakerWorker:
         elif isinstance(target_dev, str) and target_dev.isdigit():
             target_dev = int(target_dev)
 
+        if platform.system() == "Linux":
+            self.unmute_alsa_card(target_dev)
+
         if sd is not None:
             try:
                 self.stream = sd.RawOutputStream(
                     samplerate=sample_rate,
-                    channels=1,
+                    channels=2,
                     dtype='int16',
                     device=target_dev,
                     latency='low'
                 )
                 self.stream.start()
                 self.is_active = True
-                logger.info(f"Speaker output stream started on {target_dev} @ {sample_rate}Hz")
+                logger.info(f"Speaker output stream started on {target_dev} @ {sample_rate}Hz (stereo)")
                 return
             except Exception as e:
                 logger.debug(f"sounddevice RawOutputStream start notice ({sample_rate}Hz, dev={target_dev}): {e}")
 
-        # Linux aplay fallback with automatic ALSA plug conversion
+        # Linux aplay fallback with automatic ALSA plug conversion (stereo mode)
         if platform.system() == "Linux":
             alsa_target = str(target_dev or "default")
             if alsa_target.startswith("plughw:") or alsa_target.startswith("plug:"):
@@ -562,7 +637,7 @@ class AudioSpeakerWorker:
                 plug_target = f"plug:{alsa_target}"
 
             try:
-                cmd = ["aplay", "-D", plug_target, "-r", str(sample_rate), "-c", "1", "-f", "S16_LE", "-t", "raw", "--buffer-size=2048"]
+                cmd = ["aplay", "-D", plug_target, "-r", str(sample_rate), "-c", "2", "-f", "S16_LE", "-t", "raw", "--buffer-size=2048"]
                 self._subprocess_playback = subprocess.Popen(
                     cmd,
                     stdin=subprocess.PIPE,
@@ -570,7 +645,7 @@ class AudioSpeakerWorker:
                     stderr=subprocess.DEVNULL
                 )
                 self.is_active = True
-                logger.info(f"Speaker playback started via aplay on {plug_target} @ {sample_rate}Hz")
+                logger.info(f"Speaker playback started via aplay on {plug_target} @ {sample_rate}Hz (stereo)")
                 return
             except Exception as e:
                 logger.error(f"aplay subprocess fallback failed: {e}")
@@ -590,8 +665,12 @@ class AudioSpeakerWorker:
             if len(arr) > 0:
                 rms = np.sqrt(np.mean(arr.astype(float)**2))
                 self.current_volume_rms = min(100.0, (rms / 32767.0) * 400.0)
+                # Duplicate mono to stereo 2-channel PCM for hardware compatibility
+                stereo_bytes = np.column_stack((arr, arr)).tobytes()
+            else:
+                stereo_bytes = raw_bytes
         except Exception:
-            pass
+            stereo_bytes = raw_bytes
 
         if not self.is_active or self.sample_rate != client_sample_rate:
             self.start(client_sample_rate)
@@ -599,7 +678,7 @@ class AudioSpeakerWorker:
         # Output to sounddevice stream
         if self.stream and self.is_active:
             try:
-                self.stream.write(raw_bytes)
+                self.stream.write(stereo_bytes)
                 return
             except Exception as e:
                 logger.debug(f"Speaker stream write error: {e}")
@@ -610,14 +689,14 @@ class AudioSpeakerWorker:
                 self.start(client_sample_rate)
             if self._subprocess_playback and self._subprocess_playback.stdin:
                 try:
-                    self._subprocess_playback.stdin.write(raw_bytes)
+                    self._subprocess_playback.stdin.write(stereo_bytes)
                     self._subprocess_playback.stdin.flush()
                 except Exception:
                     # Retry once after restart
                     try:
                         self.start(client_sample_rate)
                         if self._subprocess_playback and self._subprocess_playback.stdin:
-                            self._subprocess_playback.stdin.write(raw_bytes)
+                            self._subprocess_playback.stdin.write(stereo_bytes)
                             self._subprocess_playback.stdin.flush()
                     except Exception:
                         pass
