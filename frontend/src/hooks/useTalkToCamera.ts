@@ -16,6 +16,7 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
   const isTalkingRef = useRef(false);
 
   // Fetch available speaker output devices from backend
@@ -40,7 +41,7 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
 
   // Connect to Talk WebSocket
   const connectWs = useCallback(() => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return wsRef.current;
     }
 
@@ -90,16 +91,26 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
       processorRef.current = null;
     }
 
+    if (gainNodeRef.current) {
+      try {
+        gainNodeRef.current.disconnect();
+      } catch {}
+      gainNodeRef.current = null;
+    }
+
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      try {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      } catch {}
       mediaStreamRef.current = null;
     }
 
     if (audioCtxRef.current) {
       try {
-        audioCtxRef.current.close().catch(() => {});
+        if (audioCtxRef.current.state !== 'closed') {
+          audioCtxRef.current.suspend().catch(() => {});
+        }
       } catch {}
-      audioCtxRef.current = null;
     }
 
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -109,40 +120,66 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
     }
   }, []);
 
-  // Start broadcasting voice to camera speaker
+  // Start broadcasting voice to camera speaker (with iOS Safari support)
   const startTalking = useCallback(async () => {
     if (isTalkingRef.current) return;
 
     try {
       setErrorMsg(null);
+
+      // 1. iOS Safari Requirement: Synchronously unlock/create AudioContext inside user gesture
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtxClass) {
+        throw new Error('Web Audio API not supported on this browser');
+      }
+
+      let ctx = audioCtxRef.current;
+      if (!ctx || ctx.state === 'closed') {
+        ctx = new AudioCtxClass();
+        audioCtxRef.current = ctx;
+      }
+
+      if (ctx.state === 'suspended') {
+        // Resume immediately within user gesture token
+        ctx.resume().catch(() => {});
+      }
+
+      // 2. Connect WebSocket
       connectWs();
 
-      // Request browser microphone with noise suppression & echo cancellation
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // 3. Request microphone access with iOS-compatible constraints
+      const constraints: MediaStreamConstraints = {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         },
-      });
+      };
 
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       mediaStreamRef.current = stream;
 
-      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioCtxClass();
-      audioCtxRef.current = ctx;
-
+      // Ensure AudioContext is running after async permission prompt
       if (ctx.state === 'suspended') {
         await ctx.resume();
       }
 
       const source = ctx.createMediaStreamSource(stream);
-      // Process chunks of 1024 samples
-      const processor = ctx.createScriptProcessor(2048, 1, 1);
+
+      // 4. Create ScriptProcessorNode for 16-bit PCM chunk streaming
+      // iOS WebKit handles 2048 or 4096 buffer size reliably
+      const bufferSize = 2048;
+      const processor = ctx.createScriptProcessor(bufferSize, 1, 1);
       processorRef.current = processor;
 
+      // 5. iOS WebKit Critical Fix: Connect processor to a silent GainNode (gain=0)
+      // If connected directly to destination, iOS feedback cancellation mutes the mic!
+      const muteGain = ctx.createGain();
+      muteGain.gain.setValueAtTime(0, ctx.currentTime);
+      gainNodeRef.current = muteGain;
+
       const targetSampleRate = 16000;
-      const inputSampleRate = ctx.sampleRate;
+      const inputSampleRate = ctx.sampleRate || 44100;
 
       processor.onaudioprocess = (e) => {
         if (!isTalkingRef.current) return;
@@ -156,10 +193,10 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
           sum += inputBuffer[i] * inputBuffer[i];
         }
         const rms = Math.sqrt(sum / inputBuffer.length);
-        const level = Math.min(100, Math.round(rms * 300));
+        const level = Math.min(100, Math.round(rms * 320));
         setTalkVolume(level);
 
-        // Downsample / resample from inputSampleRate to 16000Hz
+        // Downsample / resample from inputSampleRate (e.g. 44.1k/48k on iPhone) to 16000Hz
         let resampled: Float32Array;
         if (inputSampleRate === targetSampleRate) {
           resampled = inputBuffer;
@@ -185,8 +222,10 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
         }
       };
 
+      // Connect audio graph: source -> processor -> muteGain -> destination
       source.connect(processor);
-      processor.connect(ctx.destination);
+      processor.connect(muteGain);
+      muteGain.connect(ctx.destination);
 
       isTalkingRef.current = true;
       setIsTalking(true);
@@ -195,13 +234,22 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
         onShowToast('Talk Active • Broadcasting voice to camera speaker');
       }
 
-      // Haptic vibration feedback on mobile
+      // Haptic vibration feedback on supported mobile devices
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate(40);
+        try {
+          navigator.vibrate(40);
+        } catch {}
       }
     } catch (err: any) {
-      console.error('Error starting talk session:', err);
-      const errMsg = err?.name === 'NotAllowedError' ? 'Microphone permission denied' : 'Failed to access microphone';
+      console.error('Error starting talk session on iOS/browser:', err);
+      let errMsg = 'Failed to access microphone';
+      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+        errMsg = 'Microphone permission denied. Please allow microphone access in iOS Settings.';
+      } else if (err?.name === 'NotFoundError') {
+        errMsg = 'No microphone device found on this device.';
+      } else if (err?.message) {
+        errMsg = err.message;
+      }
       setErrorMsg(errMsg);
       if (onShowToast) {
         onShowToast(errMsg, true);
@@ -211,7 +259,7 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
   }, [connectWs, onShowToast, stopTalking]);
 
   const toggleTalking = useCallback(() => {
-    if (isTalking) {
+    if (isTalkingRef.current || isTalking) {
       stopTalking();
     } else {
       startTalking();
@@ -237,7 +285,9 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
     return () => {
       stopTalking();
       if (wsRef.current) {
-        wsRef.current.close();
+        try {
+          wsRef.current.close();
+        } catch {}
       }
     };
   }, [stopTalking]);
@@ -256,3 +306,4 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
     refreshSpeakerDevices: fetchSpeakerDevices,
   };
 }
+

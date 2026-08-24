@@ -128,8 +128,6 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     talkVolume,
     speakerDevices,
     activeSpeakerDevice,
-    startTalking,
-    stopTalking,
     toggleTalking,
     setSpeakerDevice,
   } = useTalkToCamera({ onShowToast });
@@ -881,19 +879,18 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
           {/* 2-Way Audio Talk to Camera Intercom Button */}
           <button
             type="button"
-            onMouseDown={startTalking}
-            onMouseUp={stopTalking}
-            onTouchStart={startTalking}
-            onTouchEnd={stopTalking}
-            onClick={toggleTalking}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-all shrink-0 select-none ${
+            onClick={(e) => {
+              e.preventDefault();
+              toggleTalking();
+            }}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-all shrink-0 select-none cursor-pointer ${
               isTalking
                 ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-400 animate-pulse shadow-lg shadow-rose-600/30'
                 : isFloating
                 ? 'bg-black/80 hover:bg-black text-zinc-200 border-white/20 backdrop-blur-md shadow-lg'
                 : 'bg-[#18181c] hover:bg-[#222226] text-zinc-300 border-[#2c2c32]'
             }`}
-            title={isTalking ? 'Currently Broadcasting Voice • Click/Release to Stop' : 'Hold or Click to Talk to Camera Speaker (2-Way Audio)'}
+            title={isTalking ? 'Broadcasting Voice • Tap to Stop' : 'Tap to Talk to Camera Speaker (2-Way Audio)'}
           >
             <Radio className={`h-3.5 w-3.5 ${isTalking ? 'text-white animate-spin' : 'text-emerald-400'}`} />
             <span className="font-mono font-semibold">
