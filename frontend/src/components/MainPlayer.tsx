@@ -137,6 +137,8 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
   const [editingCamera, setEditingCamera] = useState<CameraDevice | null>(null);
   const [camToDelete, setCamToDelete] = useState<string | null>(null);
   const [isDeletingCam, setIsDeletingCam] = useState(false);
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [isDeletingAllCam, setIsDeletingAllCam] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
 
   // Custom Object & Zone Trackers State
@@ -702,6 +704,26 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     }
   };
 
+  const handleConfirmDeleteAllCameras = async () => {
+    setIsDeletingAllCam(true);
+    try {
+      const res = await fetch('/api/cameras/all', { method: 'DELETE' });
+      if (res.ok) {
+        if (onShowToast) onShowToast('All cameras removed from system');
+        setShowDeleteAllModal(false);
+        if (onRefreshDevices) onRefreshDevices();
+        onReconnect();
+      } else {
+        if (onShowToast) onShowToast('Failed to remove cameras', true);
+      }
+    } catch (e) {
+      console.error(e);
+      if (onShowToast) onShowToast('Error removing cameras', true);
+    } finally {
+      setIsDeletingAllCam(false);
+    }
+  };
+
   const handleScanHardware = async () => {
     setIsScanning(true);
     try {
@@ -1201,15 +1223,31 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                     </button>
 
                     {hasCameras && (
-                      <button
-                        onClick={() => handleDeleteCamera(currentCam.device)}
-                        className="w-full text-left px-2.5 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-950/80 border border-rose-900/50 text-rose-300 text-xs flex items-center justify-between transition-colors"
-                      >
-                        <span className="flex items-center gap-2">
-                          <Trash2 className="h-3.5 w-3.5 text-rose-400" />
-                          Delete This Camera
-                        </span>
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleDeleteCamera(currentCam.device)}
+                          className="w-full text-left px-2.5 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-950/80 border border-rose-900/50 text-rose-300 text-xs flex items-center justify-between transition-colors"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                            Delete This Camera
+                          </span>
+                        </button>
+                        {devices.length > 1 && (
+                          <button
+                            onClick={() => {
+                              setShowMoreMenu(false);
+                              setShowDeleteAllModal(true);
+                            }}
+                            className="w-full text-left px-2.5 py-1.5 rounded-lg bg-rose-950/20 hover:bg-rose-950/60 border border-rose-900/40 text-rose-400 text-xs flex items-center justify-between transition-colors"
+                          >
+                            <span className="flex items-center gap-2">
+                              <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                              Delete All Cameras ({devices.length})
+                            </span>
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -1927,6 +1965,23 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
         variant="danger"
         onConfirm={handleConfirmDeleteCamera}
         onClose={() => setCamToDelete(null)}
+      />
+
+      {/* Delete All Cameras Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteAllModal}
+        title="Delete All Cameras"
+        message={
+          <p>
+            Are you sure you want to delete <strong className="text-white">all {devices.length} cameras</strong> from your security system?
+            The video pool will be completely emptied until you add or scan cameras again.
+          </p>
+        }
+        confirmText="Delete All Cameras"
+        isLoading={isDeletingAllCam}
+        variant="danger"
+        onConfirm={handleConfirmDeleteAllCameras}
+        onClose={() => setShowDeleteAllModal(false)}
       />
     </div>
   );

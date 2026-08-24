@@ -469,6 +469,14 @@ def delete_configured_camera(camera_id: str) -> bool:
         conn.commit()
         return cursor.rowcount > 0
 
+def delete_all_configured_cameras() -> bool:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM cameras")
+        cursor.execute("DELETE FROM system_config WHERE key = 'active_camera'")
+        conn.commit()
+        return True
+
 def get_active_camera() -> str:
     with get_db() as conn:
         cursor = conn.cursor()

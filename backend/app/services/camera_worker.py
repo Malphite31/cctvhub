@@ -801,13 +801,23 @@ class MultiCameraManager:
         return resolutions
 
     def remove_worker(self, device_id: str):
+        canonical_key = self._normalize_key(device_id)
         with self.lock:
-            dev_str = str(device_id)
-            if dev_str in self.workers:
-                worker = self.workers.pop(dev_str)
-                worker.stop()
-            self._cached_devices = [d for d in self._cached_devices if str(d.get("device")) != dev_str]
+            to_remove = []
+            for k, w in self.workers.items():
+                if k == canonical_key or k == str(device_id) or k.replace("/dev/video", "") == canonical_key.replace("/dev/video", ""):
+                    to_remove.append(k)
+                    try:
+                        w.stop()
+                    except Exception:
+                        pass
+            for k in to_remove:
+                self.workers.pop(k, None)
+
+            self._cached_devices = [d for d in self._cached_devices if str(d.get("device")) != canonical_key and str(d.get("device")) != str(device_id)]
             self._last_scan_time = 0
+            if self._active_device_id == canonical_key or self._active_device_id == str(device_id):
+                self._active_device_id = None
 
     def scan_hardware_devices(self) -> List[Dict[str, Any]]:
         """Scans hardware devices connected to the operating system."""
@@ -923,41 +933,14 @@ class MultiCameraManager:
         return devices
 
     def get_available_cameras(self) -> List[Dict[str, Any]]:
-        """Returns all configured cameras synced with the database. Automatically seeds detected hardware if DB is empty."""
+        """Returns all configured cameras synced with the database. Returns empty list if no cameras are configured."""
         try:
             db_cameras = list_configured_cameras()
         except Exception:
             db_cameras = []
 
         if not db_cameras:
-            try:
-                hardware = self.scan_hardware_devices()
-                if hardware:
-                    for dev in hardware:
-                        dev_id = str(dev["device"])
-                        add_configured_camera(
-                            camera_id=dev_id,
-                            name=dev["name"],
-                            source=dev_id,
-                            resolution=dev.get("resolution", "1920x1080"),
-                            fps=dev.get("fps", 60),
-                            zone=f"Camera Zone {dev_id}"
-                        )
-                    db_cameras = list_configured_cameras()
-                else:
-                    add_configured_camera(
-                        camera_id="0",
-                        name="Default USB Camera",
-                        source="0",
-                        resolution="1920x1080",
-                        fps=60,
-                        zone="Main Area"
-                    )
-                    db_cameras = list_configured_cameras()
-            except Exception:
-                pass
-
-        if not db_cameras:
+            self._cached_devices = []
             return []
 
         devices = []
@@ -1001,9 +984,14 @@ class MultiCameraManager:
 
     def stop_all(self):
         with self.lock:
-            for w in self.workers.values():
-                w.stop()
+            for w in list(self.workers.values()):
+                try:
+                    w.stop()
+                except Exception:
+                    pass
             self.workers.clear()
+            self._cached_devices = []
+            self._active_device_id = None
 
 
 camera_manager = MultiCameraManager()

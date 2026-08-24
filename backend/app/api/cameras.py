@@ -8,7 +8,8 @@ from ..core.database import (
     get_configured_camera,
     add_configured_camera,
     update_configured_camera,
-    delete_configured_camera
+    delete_configured_camera,
+    delete_all_configured_cameras
 )
 from ..services.camera_worker import camera_manager
 
@@ -163,3 +164,13 @@ def remove_camera(camera_id: str):
     # Stop worker
     camera_manager.remove_worker(clean_id)
     return {"status": "deleted", "id": clean_id}
+
+@router.delete("/all")
+@router.post("/delete-all")
+def remove_all_cameras():
+    """Delete all cameras from the system."""
+    all_cams = list_configured_cameras()
+    count = len(all_cams)
+    delete_all_configured_cameras()
+    camera_manager.stop_all()
+    return {"status": "all_deleted", "count": count}
