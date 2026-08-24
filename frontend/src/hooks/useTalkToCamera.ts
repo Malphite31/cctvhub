@@ -273,11 +273,24 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
         method: 'POST',
       });
       if (onShowToast) {
-        onShowToast(`Speaker output device updated`);
+        onShowToast(`Host speaker output updated`);
       }
       fetchSpeakerDevices();
     } catch {
       if (onShowToast) onShowToast('Failed to switch speaker device', true);
+    }
+  };
+
+  const testSpeaker = async () => {
+    try {
+      const res = await fetch('/api/stream/audio/test-speaker', { method: 'POST' });
+      if (res.ok) {
+        if (onShowToast) onShowToast('Playing test chime on host speaker...');
+      } else {
+        if (onShowToast) onShowToast('Could not play test chime', true);
+      }
+    } catch {
+      if (onShowToast) onShowToast('Failed to connect to speaker service', true);
     }
   };
 
@@ -303,6 +316,7 @@ export function useTalkToCamera({ onShowToast }: UseTalkToCameraOptions = {}) {
     stopTalking,
     toggleTalking,
     setSpeakerDevice,
+    testSpeaker,
     refreshSpeakerDevices: fetchSpeakerDevices,
   };
 }

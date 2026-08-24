@@ -398,7 +398,12 @@ class AudioSpeakerWorker:
     def __init__(self, sample_rate: int = 16000, channels: int = 1):
         self.sample_rate = sample_rate
         self.channels = channels
-        self.output_device: Optional[Union[int, str]] = None
+        try:
+            from ..core.database import get_system_setting
+            saved_dev = get_system_setting("speaker_output_device", "default")
+            self.output_device: Optional[Union[int, str]] = saved_dev if saved_dev and saved_dev != "default" else None
+        except Exception:
+            self.output_device = None
         self.stream: Optional[Any] = None
         self.is_active = False
         self.is_talking = False
@@ -472,9 +477,14 @@ class AudioSpeakerWorker:
                             c_name = m.group(2).strip()
                             d_idx = int(m.group(3))
                             d_name = m.group(5).strip()
+                            clean_alsa_name = d_name
+                            if "emeet" in clean_alsa_name.lower():
+                                clean_alsa_name = "EMEET Camera Speaker"
+                            elif "usb" in clean_alsa_name.lower():
+                                clean_alsa_name = f"{clean_alsa_name} (USB Audio)"
                             devices.append({
                                 "index": f"plughw:{c_idx},{d_idx}",
-                                "name": f"{d_name} [hw:{c_idx},{d_idx}]",
+                                "name": f"{clean_alsa_name} [ALSA Card {c_idx}]",
                                 "raw_name": f"card {c_idx}: {c_name}, device {d_idx}: {d_name}",
                                 "channels": 2,
                                 "default_samplerate": 44100
@@ -485,7 +495,29 @@ class AudioSpeakerWorker:
 
     def set_output_device(self, device_index: Optional[Union[int, str]]):
         self.output_device = device_index
+        try:
+            from ..core.database import set_system_setting
+            set_system_setting("speaker_output_device", str(device_index or "default"))
+        except Exception:
+            pass
         self.stop()
+
+    def test_sound(self):
+        """Plays a gentle test chime through the currently selected speaker."""
+        try:
+            sample_rate = 16000
+            duration = 0.35
+            t = np.linspace(0, duration, int(sample_rate * duration), False)
+            tone = 0.3 * np.sin(2 * np.pi * 587.33 * t)
+            fade_len = int(sample_rate * 0.03)
+            tone[:fade_len] *= np.linspace(0, 1, fade_len)
+            tone[-fade_len:] *= np.linspace(1, 0, fade_len)
+            pcm = (tone * 32767).astype(np.int16).tobytes()
+            self.play_chunk(pcm, sample_rate)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to play test sound: {e}")
+            return False
 
     def start(self, sample_rate: int = 16000):
         if self.is_active and self.sample_rate == sample_rate:

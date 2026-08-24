@@ -306,17 +306,25 @@ def get_audio_output_devices():
     """List available speaker / audio output devices with friendly names."""
     return {
         "devices": audio_speaker.list_output_devices(),
-        "active_device": audio_speaker.output_device
+        "active_device": audio_speaker.output_device or "default"
     }
 
 @router.post("/audio/output-device")
 def set_audio_output_device(device: Optional[str] = Query(None, description="Speaker output device index or default")):
     """Switch active speaker / audio output device for 2-way talk."""
-    audio_speaker.set_output_device(device)
+    target = None if device in ["default", "none", "", None] else device
+    audio_speaker.set_output_device(target)
     return {
         "status": "success",
-        "active_device": audio_speaker.output_device
+        "active_device": audio_speaker.output_device or "default"
     }
+
+@router.post("/audio/test-speaker")
+def test_speaker_audio():
+    """Plays a brief test tone on the active host speaker."""
+    success = audio_speaker.test_sound()
+    return {"status": "success" if success else "error"}
+
 
 @router.get("/talk/status")
 def get_talk_status():

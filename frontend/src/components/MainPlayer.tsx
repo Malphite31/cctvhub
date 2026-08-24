@@ -129,6 +129,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     activeSpeakerDevice,
     toggleTalking,
     setSpeakerDevice,
+    testSpeaker,
   } = useTalkToCamera({ onShowToast });
 
   // Camera Edit & Add Modal State
@@ -900,7 +901,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
           >
             <Radio className={`h-3.5 w-3.5 ${isTalking ? 'text-white animate-spin' : 'text-emerald-400'}`} />
             <span className="font-mono font-semibold">
-              {isTalking ? `Talking (${talkVolume}%)` : 'Talk'}
+              {isTalking ? 'Talking...' : 'Talk'}
             </span>
           </button>
 
@@ -1599,29 +1600,44 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
               </div>
             )}
 
-            {/* 2-Way Intercom Camera Speaker Output Selection */}
-            {speakerDevices.length > 0 && (
-              <div className="pt-2 border-t border-[#222222] space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-zinc-400 font-mono">Camera Speaker Output (2-Way Talk):</span>
+            {/* Host Speaker Output (2-Way Talk Destination) Selection */}
+            <div className="pt-2.5 border-t border-[#222222] space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-zinc-300 font-mono font-medium flex items-center gap-1">
+                  <Volume2 className="h-3 w-3 text-[#3B82F6]" />
+                  Host Speaker Output:
+                </span>
+                <div className="flex items-center gap-1.5">
                   {isTalking && (
                     <span className="text-[9px] font-mono text-rose-400 animate-pulse font-semibold">● ACTIVE</span>
                   )}
-                </div>
-                <div className="relative">
-                  <select
-                    value={activeSpeakerDevice !== null && activeSpeakerDevice !== undefined ? String(activeSpeakerDevice) : ''}
-                    onChange={(e) => setSpeakerDevice(e.target.value)}
-                    className="w-full bg-[#18181b] hover:bg-[#202024] border border-[#2a2a30] rounded-lg pl-3 pr-8 py-2 text-zinc-200 text-xs outline-none focus:border-[#3B82F6] font-mono appearance-none transition-colors cursor-pointer"
+                  <button
+                    type="button"
+                    onClick={testSpeaker}
+                    className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#202024] hover:bg-[#2b2b32] text-zinc-300 hover:text-white border border-[#33333b] transition-colors"
+                    title="Play a test tone through the selected speaker"
                   >
-                    {speakerDevices.map((d: any) => (
-                      <option key={String(d.index)} value={String(d.index)}>{d.name}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400 pointer-events-none" />
+                    Test Sound
+                  </button>
                 </div>
               </div>
-            )}
+              <div className="relative">
+                <select
+                  value={activeSpeakerDevice !== null && activeSpeakerDevice !== undefined ? String(activeSpeakerDevice) : 'default'}
+                  onChange={(e) => setSpeakerDevice(e.target.value)}
+                  className="w-full bg-[#18181b] hover:bg-[#202024] border border-[#2a2a30] rounded-lg pl-3 pr-8 py-2 text-zinc-200 text-xs outline-none focus:border-[#3B82F6] font-mono appearance-none transition-colors cursor-pointer"
+                >
+                  <option value="default">Default System Speaker</option>
+                  {speakerDevices.filter((d: any) => d.index !== 'default').map((d: any) => (
+                    <option key={String(d.index)} value={String(d.index)}>{d.name}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400 pointer-events-none" />
+              </div>
+              <p className="text-[10px] text-zinc-500 font-mono">
+                Audio output device on server/camera where your voice is played during Talk.
+              </p>
+            </div>
           </div>
         </div>
       )}

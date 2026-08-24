@@ -751,3 +751,20 @@ def clear_user_sessions(keep_active: bool = False) -> int:
             cursor.execute("DELETE FROM user_sessions")
         conn.commit()
         return cursor.rowcount
+
+def get_system_setting(key: str, default: Optional[str] = None) -> Optional[str]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS system_config (key TEXT PRIMARY KEY, value TEXT)")
+        cursor.execute("SELECT value FROM system_config WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        return row["value"] if row else default
+
+def set_system_setting(key: str, value: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS system_config (key TEXT PRIMARY KEY, value TEXT)")
+        cursor.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)", (key, str(value)))
+        conn.commit()
+
+
