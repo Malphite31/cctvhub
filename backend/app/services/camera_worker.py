@@ -546,48 +546,59 @@ class MultiCameraManager:
         active_id = self.get_active_device()
         return self.get_worker(active_id)
 
+    def _normalize_key(self, dev_id: Any) -> str:
+        s = str(dev_id).strip()
+        with self.lock:
+            if s in self.workers:
+                return s
+            norm = s.replace("/dev/video", "") if s.startswith("/dev/video") else s
+            for k in self.workers.keys():
+                if k == norm or k == f"/dev/video{norm}":
+                    return k
+        return s
+
     def restart_camera(self, device_id: str) -> CameraWorker:
         """Forcefully re-initializes and restarts the camera worker for the given device ID."""
+        canonical_key = self._normalize_key(device_id)
         with self.lock:
-            dev_str = str(device_id)
-            if dev_str in self.workers:
-                worker = self.workers[dev_str]
+            if canonical_key in self.workers:
+                worker = self.workers[canonical_key]
                 worker.restart()
                 return worker
             else:
-                worker = self.get_worker(dev_str)
+                worker = self.get_worker(canonical_key)
                 worker.restart()
                 return worker
 
     def get_worker(self, device_id: str, source: Optional[str] = None) -> CameraWorker:
+        canonical_key = self._normalize_key(device_id)
         with self.lock:
-            dev_str = str(device_id)
-            if dev_str not in self.workers:
+            if canonical_key not in self.workers:
                 resolved_source = source
                 if resolved_source is None:
                     try:
-                        cam_cfg = get_configured_camera(dev_str)
+                        cam_cfg = get_configured_camera(canonical_key)
                         if cam_cfg and cam_cfg.get("source"):
                             resolved_source = cam_cfg["source"]
                         else:
-                            resolved_source = dev_str
+                            resolved_source = canonical_key
                     except Exception:
-                        resolved_source = dev_str
-                worker = CameraWorker(device=device_id, source=resolved_source)
+                        resolved_source = canonical_key
+                worker = CameraWorker(device=canonical_key, source=resolved_source)
                 worker.start()
-                self.workers[dev_str] = worker
-            elif source is not None and str(self.workers[dev_str].source) != str(source):
+                self.workers[canonical_key] = worker
+            elif source is not None and str(self.workers[canonical_key].source) != str(source):
                 # Source updated: restart worker with new source
-                self.workers[dev_str].stop()
-                worker = CameraWorker(device=device_id, source=source)
+                self.workers[canonical_key].stop()
+                worker = CameraWorker(device=canonical_key, source=source)
                 worker.start()
-                self.workers[dev_str] = worker
+                self.workers[canonical_key] = worker
             else:
                 # Ensure thread is alive
-                w = self.workers[dev_str]
+                w = self.workers[canonical_key]
                 if not w.is_running or not (w.worker_thread and w.worker_thread.is_alive()):
                     w.restart()
-            return self.workers[dev_str]
+            return self.workers[canonical_key]
 
     def probe_camera_resolutions(self, source_val: Any) -> List[Dict[str, Any]]:
         """
@@ -854,11 +865,39 @@ class MultiCameraManager:
         return devices
 
     def get_available_cameras(self) -> List[Dict[str, Any]]:
-        """Returns all configured cameras synced with the database. Returns empty list if no cameras are configured."""
+        """Returns all configured cameras synced with the database. Automatically seeds detected hardware if DB is empty."""
         try:
             db_cameras = list_configured_cameras()
         except Exception:
             db_cameras = []
+
+        if not db_cameras:
+            try:
+                hardware = self.scan_hardware_devices()
+                if hardware:
+                    for dev in hardware:
+                        dev_id = str(dev["device"])
+                        add_configured_camera(
+                            camera_id=dev_id,
+                            name=dev["name"],
+                            source=dev_id,
+                            resolution=dev.get("resolution", "1920x1080"),
+                            fps=dev.get("fps", 60),
+                            zone=f"Camera Zone {dev_id}"
+                        )
+                    db_cameras = list_configured_cameras()
+                else:
+                    add_configured_camera(
+                        camera_id="0",
+                        name="Default USB Camera",
+                        source="0",
+                        resolution="1920x1080",
+                        fps=60,
+                        zone="Main Area"
+                    )
+                    db_cameras = list_configured_cameras()
+            except Exception:
+                pass
 
         if not db_cameras:
             return []

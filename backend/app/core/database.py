@@ -395,9 +395,15 @@ def list_configured_cameras() -> List[Dict[str, Any]]:
         return [dict(row) for row in rows]
 
 def get_configured_camera(camera_id: str) -> Optional[Dict[str, Any]]:
+    clean_id = str(camera_id).strip()
+    norm_id = clean_id.replace("/dev/video", "") if clean_id.startswith("/dev/video") else clean_id
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM cameras WHERE id = ?", (str(camera_id),))
+        cursor.execute("""
+            SELECT * FROM cameras 
+            WHERE id = ? OR id = ? OR source = ? OR source = ?
+            LIMIT 1
+        """, (clean_id, norm_id, clean_id, f"/dev/video{norm_id}"))
         row = cursor.fetchone()
         return dict(row) if row else None
 

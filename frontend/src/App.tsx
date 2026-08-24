@@ -145,14 +145,20 @@ export const App: React.FC = () => {
         const camList = data.cameras || data.devices || [];
         setDevices(camList);
         if (camList.length > 0) {
+          const normalize = (val: string) => val ? String(val).replace('/dev/video', '') : '';
           const savedLocal = localStorage.getItem('cctv_active_device');
-          if (savedLocal && camList.some((d: any) => String(d.device) === savedLocal)) {
-            setActiveDevice(savedLocal);
-          } else if (backendActiveDevice && camList.some((d: any) => String(d.device) === backendActiveDevice)) {
-            setActiveDevice(backendActiveDevice);
-            localStorage.setItem('cctv_active_device', backendActiveDevice);
-          } else if (activeDevice && camList.some((d: any) => String(d.device) === activeDevice)) {
-            localStorage.setItem('cctv_active_device', activeDevice);
+          const matchSaved = savedLocal ? camList.find((d: any) => String(d.device) === savedLocal || normalize(d.device) === normalize(savedLocal)) : null;
+          const matchBackend = backendActiveDevice ? camList.find((d: any) => String(d.device) === backendActiveDevice || normalize(d.device) === normalize(backendActiveDevice)) : null;
+          const matchCurrent = activeDevice ? camList.find((d: any) => String(d.device) === activeDevice || normalize(d.device) === normalize(activeDevice)) : null;
+
+          if (matchSaved) {
+            setActiveDevice(String(matchSaved.device));
+          } else if (matchBackend) {
+            setActiveDevice(String(matchBackend.device));
+            localStorage.setItem('cctv_active_device', String(matchBackend.device));
+          } else if (matchCurrent) {
+            setActiveDevice(String(matchCurrent.device));
+            localStorage.setItem('cctv_active_device', String(matchCurrent.device));
           } else {
             const firstDev = String(camList[0].device);
             setActiveDevice(firstDev);

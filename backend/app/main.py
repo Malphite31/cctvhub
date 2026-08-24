@@ -27,10 +27,11 @@ async def lifespan(app: FastAPI):
         pass
 
     try:
-        configured = list_configured_cameras()
+        cams = camera_manager.get_available_cameras()
         active_id = get_active_camera()
-        for cam in configured:
-            camera_manager.get_worker(cam["id"], source=cam.get("source"))
+        if cams:
+            for cam in cams:
+                camera_manager.get_worker(cam["device"], source=cam.get("source"))
         if active_id:
             camera_manager.set_active_device(active_id)
             camera_manager.get_worker(active_id)
