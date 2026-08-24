@@ -565,7 +565,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
   const handleToggleQualityMode = async (targetMode?: 'sd' | 'hd') => {
     const nextMode = targetMode || (qualityMode === 'hd' ? 'sd' : 'hd');
     setQualityMode(nextMode);
-    const targetRes = nextMode === 'hd' ? '1920x1080' : '854x480';
+    const targetRes = nextMode === 'hd' ? '1920x1080' : '640x360';
     setSelectedResolution(targetRes);
 
     try {
@@ -583,7 +583,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
         onShowToast(
           nextMode === 'hd'
             ? 'HD Mode Activated • 1080p Crystal Clear Stream'
-            : 'SD Mode Activated • 480p Low Bandwidth (Data Saver)'
+            : 'SD Mode Activated • 360p Low Bandwidth (Data Saver)'
         );
       }
       if (onRefreshDevices) onRefreshDevices();
@@ -1010,7 +1010,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
               >
                 <Monitor className="h-3 w-3 text-[#3B82F6] shrink-0" />
                 <span className="truncate max-w-[95px] sm:max-w-none">
-                  {currentCam?.resolution || selectedResolution.replace(' (4K)', '')} • {currentCam?.fps ? `${currentCam.fps} FPS` : '60 FPS'}
+                  {(selectedResolution || currentCam?.resolution || '1920x1080').replace(' (4K)', '')} • {currentCam?.fps ? `${currentCam.fps} FPS` : '60 FPS'}
                 </span>
                 <ChevronDown className="h-3 w-3 text-zinc-400 shrink-0" />
               </button>

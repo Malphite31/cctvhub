@@ -144,26 +144,35 @@ class CameraWorker:
         return cap
 
     def set_quality_mode(self, mode: str) -> Dict[str, Any]:
-        """Switch between 'sd' (low bandwidth 480p, quality 52) and 'hd' (1080p high definition, quality 82)."""
+        """Switch between 'sd' (low bandwidth 480p, quality 42) and 'hd' (1080p high definition, quality 88)."""
         clean_mode = "hd" if str(mode).lower().strip() == "hd" else "sd"
         self.quality_mode = clean_mode
 
         if clean_mode == "sd":
-            self.jpeg_quality = 52
-            self.output_width = 854
-            self.output_height = 480
-            self.resolution = "854x480"
+            self.jpeg_quality = 45
+            self.output_width = 640
+            self.output_height = 360
+            self.requested_width = 640
+            self.requested_height = 360
+            self.requested_fps = 30
+            self.resolution = "640x360"
         else:
-            self.jpeg_quality = 82
-            self.output_width = self.requested_width if self.requested_width >= 1280 else 1920
-            self.output_height = self.requested_height if self.requested_height >= 720 else 1080
-            self.resolution = f"{self.output_width}x{self.output_height}"
+            self.jpeg_quality = 88
+            self.output_width = 1920
+            self.output_height = 1080
+            self.requested_width = 1920
+            self.requested_height = 1080
+            self.requested_fps = 60
+            self.resolution = "1920x1080"
+
+        # Signal capture loop to renegotiate hardware sensor resolution & clear buffers
+        self._need_reconnect = True
 
         # Persist to database
         try:
             from ..core.database import set_camera_quality_mode, update_configured_camera
             set_camera_quality_mode(str(self.device), clean_mode)
-            update_configured_camera(str(self.device), resolution=self.resolution)
+            update_configured_camera(str(self.device), resolution=self.resolution, fps=self.requested_fps)
         except Exception:
             pass
 
@@ -174,7 +183,7 @@ class CameraWorker:
             "quality_mode": self.quality_mode,
             "resolution": self.resolution,
             "jpeg_quality": self.jpeg_quality,
-            "fps": self.actual_fps or self.requested_fps
+            "fps": self.requested_fps
         }
 
     def set_resolution(self, width: int, height: int, fps: int = 60, quality_mode: Optional[str] = None) -> Dict[str, Any]:
@@ -189,25 +198,16 @@ class CameraWorker:
 
         if quality_mode:
             self.quality_mode = "hd" if quality_mode.lower().strip() == "hd" else "sd"
-            self.jpeg_quality = 52 if self.quality_mode == "sd" else 82
+            self.jpeg_quality = 45 if self.quality_mode == "sd" else 88
         elif width <= 854 and height <= 480:
             self.quality_mode = "sd"
-            self.jpeg_quality = 52
+            self.jpeg_quality = 45
         else:
             self.quality_mode = "hd"
-            self.jpeg_quality = 82
+            self.jpeg_quality = 88
 
-        # 1. Attempt dynamic hardware property switch on active VideoCapture if supported
-        if self.cap and self.cap.isOpened():
-            try:
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-                self.cap.set(cv2.CAP_PROP_FPS, fps)
-            except Exception:
-                pass
-
-        if not self.is_running:
-            self.start()
+        # Signal capture loop to renegotiate hardware sensor resolution & clear buffers
+        self._need_reconnect = True
 
         # Update configured database camera if exists
         try:
