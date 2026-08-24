@@ -68,15 +68,6 @@ if [ "$IS_SYSTEMD" = true ]; then
         cd "$INSTALL_DIR"
     fi
 
-    # Migrate systemd service port to 18860 if old 8000 port was present
-    if [ -f "/etc/systemd/system/cctv-hub.service" ]; then
-        if grep -q "port 8000" /etc/systemd/system/cctv-hub.service; then
-            echo ">> Aligning systemd service port to 18860..."
-            sed -i 's/--port 8000/--port 18860/g' /etc/systemd/system/cctv-hub.service
-            systemctl daemon-reload 2>/dev/null || true
-        fi
-    fi
-
     # Restart systemd service cleanly
     if [ -f "/etc/systemd/system/cctv-hub.service" ]; then
         echo ">> Restarting systemd service 'cctv-hub'..."
@@ -98,7 +89,7 @@ if [ "$IS_SYSTEMD" = true ]; then
 
     echo "========================================="
     echo "  Upgrade Successfully Finished!        "
-    echo "  Dashboard running at http://localhost:18860"
+    echo "  Dashboard running at http://localhost:8000"
     echo "  Quick update command: cctv-update     "
     echo "========================================="
     exit 0

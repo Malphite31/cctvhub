@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     APP_NAME: str = "CCTV Surveillance Hub"
-    API_PORT: int = int(os.getenv("PORT", "18860"))
+    API_PORT: int = int(os.getenv("PORT", "8000"))
     GO2RTC_API_URL: str = os.getenv("GO2RTC_API_URL", "http://127.0.0.1:18864")
     GO2RTC_STREAM_NAME: str = os.getenv("GO2RTC_STREAM_NAME", "webcam_60fps")
     
