@@ -92,15 +92,19 @@ echo ">> [6/6] Creating systemd background service (cctv-hub.service)..."
 cat << 'EOF' > /etc/systemd/system/cctv-hub.service
 [Unit]
 Description=CCTV 60 FPS Surveillance Hub
-After=network.target
+After=network.target sound.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/opt/cctv-hub
-ExecStart=/bin/sh -c "/usr/local/bin/go2rtc -config /opt/cctv-hub/backend/streaming/go2rtc.yaml & /opt/cctv-hub/.venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+Environment="PATH=/opt/cctv-hub/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStartPre=-/bin/sh -c "killall -9 go2rtc 2>/dev/null || true"
+ExecStart=/bin/sh -c "/usr/local/bin/go2rtc -config /opt/cctv-hub/backend/streaming/go2rtc.yaml & exec /opt/cctv-hub/.venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
 Restart=always
-RestartSec=3
+RestartSec=2
+KillMode=mixed
+TimeoutStopSec=10
 StandardOutput=journal
 StandardError=journal
 

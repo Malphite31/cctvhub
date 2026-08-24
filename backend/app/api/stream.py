@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 import httpx
 from ..core.config import settings
 from ..services.camera_worker import camera_manager, camera_worker
-from ..services.audio_worker import audio_worker
+from ..services.audio_worker import audio_worker, audio_speaker
 from ..services.vision_tracker import vision_tracker
 
 router = APIRouter()
@@ -22,6 +22,7 @@ async def get_stream_config():
         "webrtc_url": f"{settings.GO2RTC_API_URL}/api/webrtc?src={settings.GO2RTC_STREAM_NAME}",
         "live_mjpeg_url": f"/api/stream/live?dev={active_id}",
         "audio_ws_url": "/api/stream/audio/ws",
+        "talk_ws_url": "/api/stream/talk/ws",
         "active_device": str(active_id),
         "fps": worker.actual_fps,
         "resolution": worker.resolution,
@@ -29,6 +30,7 @@ async def get_stream_config():
         "jpeg_quality": getattr(worker, "jpeg_quality", 52),
         "audio_enabled": True,
         "active_audio_device": audio_worker.device_index,
+        "active_speaker_device": audio_speaker.output_device,
         "sample_rate": audio_worker.sample_rate
     }
 
@@ -247,6 +249,41 @@ async def audio_websocket(websocket: WebSocket):
     finally:
         audio_worker.unregister_queue(queue)
 
+@router.websocket("/talk/ws")
+async def talk_websocket_endpoint(websocket: WebSocket):
+    """Bidirectional WebSocket for 2-way audio intercom / talking to camera speaker."""
+    await websocket.accept()
+    audio_speaker.start(sample_rate=16000)
+    try:
+        while True:
+            data = await websocket.receive()
+            if "bytes" in data and data["bytes"]:
+                raw_pcm = data["bytes"]
+                audio_speaker.play_chunk(raw_pcm, client_sample_rate=16000)
+                await websocket.send_json({
+                    "status": "playing",
+                    "rms": round(audio_speaker.current_volume_rms, 1),
+                    "is_talking": True
+                })
+            elif "text" in data and data["text"]:
+                try:
+                    import json
+                    msg = json.loads(data["text"])
+                    if msg.get("action") == "set_device":
+                        audio_speaker.set_output_device(msg.get("device"))
+                    elif msg.get("action") == "flush":
+                        audio_speaker.flush()
+                    elif msg.get("action") == "ping":
+                        await websocket.send_json({"status": "pong"})
+                except Exception:
+                    pass
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        pass
+    except Exception:
+        pass
+    finally:
+        audio_speaker.flush()
+
 @router.get("/audio/level")
 def get_audio_level():
     """Get current microphone volume level (0-100%)."""
@@ -261,6 +298,33 @@ def get_audio_devices():
     return {
         "devices": audio_worker.list_devices(),
         "active_device": audio_worker.device_index
+    }
+
+@router.get("/audio/output-devices")
+def get_audio_output_devices():
+    """List available speaker / audio output devices with friendly names."""
+    return {
+        "devices": audio_speaker.list_output_devices(),
+        "active_device": audio_speaker.output_device
+    }
+
+@router.post("/audio/output-device")
+def set_audio_output_device(device: Optional[str] = Query(None, description="Speaker output device index or default")):
+    """Switch active speaker / audio output device for 2-way talk."""
+    audio_speaker.set_output_device(device)
+    return {
+        "status": "success",
+        "active_device": audio_speaker.output_device
+    }
+
+@router.get("/talk/status")
+def get_talk_status():
+    """Returns real-time 2-way audio talk status and speaker volume level."""
+    return {
+        "is_talking": audio_speaker.is_talking,
+        "is_active": audio_speaker.is_active,
+        "volume_rms": round(audio_speaker.current_volume_rms, 1),
+        "active_device": audio_speaker.output_device
     }
 
 @router.get("/detections")

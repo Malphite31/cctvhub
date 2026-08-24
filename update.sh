@@ -5,33 +5,51 @@ echo "========================================="
 echo "  CCTV Surveillance Hub - Git Updater   "
 echo "========================================="
 
-# 1. Verify Git is available
+# 1. Resolve and navigate to repository installation directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "/opt/cctv-hub/backend/app/main.py" ]; then
+    INSTALL_DIR="/opt/cctv-hub"
+elif [ -f "$SCRIPT_DIR/backend/app/main.py" ]; then
+    INSTALL_DIR="$SCRIPT_DIR"
+else
+    INSTALL_DIR="$(pwd)"
+fi
+
+cd "$INSTALL_DIR"
+echo ">> Working in: $INSTALL_DIR"
+
+# 2. Verify Git is available and configure safe directory
 if ! command -v git &> /dev/null; then
     echo "[!] Error: git is not installed."
     exit 1
 fi
+git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
 
-# 2. Fetch and pull latest changes
+# 3. Fetch and pull latest changes
 echo ">> Fetching latest updates from Git repository..."
-git fetch --all
-BRANCH=$(git rev-parse --abbrev-ref HEAD || echo "main")
-git reset --hard "origin/$BRANCH" || git pull origin "$BRANCH"
+git fetch --all --prune || true
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+git reset --hard "origin/$BRANCH" || git pull origin "$BRANCH" || true
 
-# 3. Check if running as native systemd service on Host / LXC
+# 4. Check if running as native systemd service on Host / LXC
 IS_SYSTEMD=false
-if [ -f "/etc/systemd/system/cctv-hub.service" ] || [ -d ".venv" ]; then
+if [ -f "/etc/systemd/system/cctv-hub.service" ] || [ -d ".venv" ] || [ -d "backend/venv" ]; then
     IS_SYSTEMD=true
 fi
 
 if [ "$IS_SYSTEMD" = true ]; then
-    echo ">> Updating Native Host Installation..."
+    echo ">> Updating Native Host / Proxmox LXC Installation..."
     
     # Update Python backend dependencies
     echo ">> Upgrading Python backend dependencies..."
     if [ -d ".venv" ]; then
+        .venv/bin/pip install --upgrade pip setuptools wheel 2>/dev/null || true
         .venv/bin/pip install -r backend/requirements.txt
+    elif [ -d "backend/venv" ]; then
+        backend/venv/bin/pip install --upgrade pip setuptools wheel 2>/dev/null || true
+        backend/venv/bin/pip install -r backend/requirements.txt
     else
-        pip3 install -r backend/requirements.txt
+        pip3 install -r backend/requirements.txt 2>/dev/null || true
     fi
 
     # Synchronize Pre-built Frontend Distribution
@@ -41,29 +59,33 @@ if [ "$IS_SYSTEMD" = true ]; then
         cp -r backend/frontend_dist/* frontend/dist/ 2>/dev/null || true
     fi
 
-    # Compile React Frontend if Node is installed
+    # Compile React Frontend if Node/NPM is installed
     if command -v npm &> /dev/null && [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
         echo ">> Compiling React Frontend with NPM..."
         cd frontend
         npm install --prefer-offline 2>/dev/null || true
         npm run build 2>/dev/null || true
-        cd ..
+        cd "$INSTALL_DIR"
     fi
 
-    # Restart systemd service
+    # Restart systemd service cleanly
     if [ -f "/etc/systemd/system/cctv-hub.service" ]; then
         echo ">> Restarting systemd service 'cctv-hub'..."
+        # Clean any stale go2rtc or lingering ports
+        killall -9 go2rtc 2>/dev/null || true
         if command -v sudo &> /dev/null; then
+            sudo systemctl daemon-reload 2>/dev/null || true
             sudo systemctl restart cctv-hub
         else
+            systemctl daemon-reload 2>/dev/null || true
             systemctl restart cctv-hub
         fi
         echo ">> Systemd service 'cctv-hub' restarted successfully!"
     fi
 
-    # Create 1-word global update command
-    chmod +x /opt/cctv-hub/update.sh 2>/dev/null || true
-    ln -sf /opt/cctv-hub/update.sh /usr/local/bin/cctv-update 2>/dev/null || true
+    # Create / update global 1-word cctv-update command
+    chmod +x "$INSTALL_DIR/update.sh" 2>/dev/null || true
+    ln -sf "$INSTALL_DIR/update.sh" /usr/local/bin/cctv-update 2>/dev/null || true
 
     echo "========================================="
     echo "  Upgrade Successfully Finished!        "
@@ -73,7 +95,7 @@ if [ "$IS_SYSTEMD" = true ]; then
     exit 0
 fi
 
-# 4. If running as Docker container
+# 5. If running as Docker container
 if command -v docker &> /dev/null && [ -f "docker-compose.yml" ]; then
     echo ">> Updating Docker deployment..."
     docker compose down || true

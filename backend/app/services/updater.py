@@ -184,25 +184,42 @@ class AppUpdaterService:
 
     def _restart_service(self):
         """Restarts the CCTV Hub application cleanly across systemd, Docker, and standalone setups."""
-        # 1. If running under systemd service, restart service
-        if shutil.which("systemctl"):
-            for svc in ["cctv-hub", "cctvhub", "cctv"]:
-                try:
-                    chk = subprocess.run(["systemctl", "is-active", svc], capture_output=True, text=True)
-                    if chk.returncode == 0:
-                        logger.info(f"Restarting systemd service: {svc}")
-                        subprocess.Popen(["systemctl", "restart", svc])
-                        return
-                except Exception:
-                    pass
+        logger.info("Restarting CCTV Hub service...")
 
-        # 2. If running in Docker / container or managed process: exit with 0 so supervisor or container restarts
         if sys.platform != "win32":
+            # 1. Decoupled systemd restart to avoid cgroup self-kill trap
+            if shutil.which("systemd-run"):
+                for svc in ["cctv-hub", "cctvhub", "cctv"]:
+                    try:
+                        chk = subprocess.run(["systemctl", "is-active", svc], capture_output=True, text=True)
+                        if chk.returncode == 0:
+                            logger.info(f"Triggering decoupled systemd-run restart for {svc}")
+                            subprocess.run(
+                                ["systemd-run", "--no-block", "--unit=cctv-auto-restarter", "sh", "-c", f"sleep 1 && systemctl restart {svc}"],
+                                capture_output=True
+                            )
+                            time.sleep(0.5)
+                            os._exit(0)
+                    except Exception as e:
+                        logger.debug(f"systemd-run error: {e}")
+
+            # 2. Detached background process fallback
             try:
-                logger.info("Restarting process via supervisor/container exit.")
+                subprocess.Popen(
+                    ["nohup", "sh", "-c", "sleep 1 && (systemctl restart cctv-hub 2>/dev/null || systemctl restart cctvhub 2>/dev/null || true)"],
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL
+                )
+                time.sleep(0.5)
                 os._exit(0)
             except Exception:
                 pass
+
+            # 3. Direct clean process exit so systemd Restart=always brings it back up
+            logger.info("Restarting process via clean supervisor/systemd exit.")
+            os._exit(0)
         else:
             try:
                 os.execl(sys.executable, sys.executable, *sys.argv)

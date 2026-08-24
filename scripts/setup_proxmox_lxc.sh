@@ -39,19 +39,23 @@ cp "$CONF_FILE" "${CONF_FILE}.bak_$(date +%s)"
 # Remove old CCTV passthrough entries if present
 sed -i '/# CCTV Webcam Passthrough/d' "$CONF_FILE"
 sed -i '/lxc.cgroup2.devices.allow: c 81:\* rwm/d' "$CONF_FILE"
+sed -i '/lxc.cgroup2.devices.allow: c 116:\* rwm/d' "$CONF_FILE"
 sed -i '/lxc.cgroup2.devices.allow: c 226:\* rwm/d' "$CONF_FILE"
 sed -i '/dev\/video/d' "$CONF_FILE"
+sed -i '/dev\/snd/d' "$CONF_FILE"
 sed -i '/dev\/dri/d' "$CONF_FILE"
 
 cat <<EOT >> "$CONF_FILE"
 
-# CCTV Webcam Passthrough
+# CCTV Webcam & Audio Passthrough
 lxc.cgroup2.devices.allow: c 81:* rwm
+lxc.cgroup2.devices.allow: c 116:* rwm
 lxc.cgroup2.devices.allow: c 226:* rwm
 lxc.mount.entry: /dev/video0 dev/video0 none bind,optional,create=file
 lxc.mount.entry: /dev/video1 dev/video1 none bind,optional,create=file
+lxc.mount.entry: /dev/snd dev/snd none bind,optional,create=dir
 lxc.mount.entry: /dev/dri dev/dri none bind,optional,create=dir
 EOT
 
-echo "[+] Passthrough rules successfully added to container $CT_ID!"
+echo "[+] Passthrough rules (Webcam + Audio) successfully added to container $CT_ID!"
 echo "[+] Now restart the container using: pct stop $CT_ID && pct start $CT_ID"

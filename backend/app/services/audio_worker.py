@@ -391,3 +391,212 @@ class AudioWorker:
             self._subprocess_capture = None
 
 audio_worker = AudioWorker()
+
+
+class AudioSpeakerWorker:
+    """Receives live voice PCM streams from browser and plays them through camera/host speaker."""
+    def __init__(self, sample_rate: int = 16000, channels: int = 1):
+        self.sample_rate = sample_rate
+        self.channels = channels
+        self.output_device: Optional[Union[int, str]] = None
+        self.stream: Optional[Any] = None
+        self.is_active = False
+        self.is_talking = False
+        self.current_volume_rms = 0.0
+        self.lock = threading.Lock()
+        self.last_audio_time = 0.0
+        self._subprocess_playback: Optional[subprocess.Popen] = None
+        self._output_queue: asyncio.Queue = None
+
+    def list_output_devices(self) -> List[Dict[str, Any]]:
+        """Returns clean list of real speaker / audio output devices."""
+        devices = []
+        seen_keys = set()
+        devices.append({
+            "index": "default",
+            "name": "Default System Speaker",
+            "raw_name": "Default System Speaker",
+            "channels": 2,
+            "default_samplerate": 44100
+        })
+        seen_keys.add("default")
+
+        if sd is not None:
+            try:
+                all_devs = sd.query_devices()
+                host_apis = {idx: api['name'] for idx, api in enumerate(sd.query_hostapis())}
+                for dev_idx, dev in enumerate(all_devs):
+                    if dev.get('max_output_channels', 0) <= 0:
+                        continue
+                    raw_name = dev.get('name', f'Speaker {dev_idx}')
+                    api_name = host_apis.get(dev.get('hostapi', -1), '')
+                    if '@System32' in raw_name or 'WDM-KS' in api_name:
+                        continue
+                    if 'sound mapper' in raw_name.lower() or 'primary sound driver' in raw_name.lower():
+                        continue
+                    clean_name = raw_name
+                    for prefix in ['Speakers (', 'Output (', 'Headphones (', 'Speaker (']:
+                        if clean_name.startswith(prefix) and clean_name.endswith(')'):
+                            clean_name = clean_name[len(prefix):-1]
+                    norm_key = clean_name.strip().lower()
+                    if 'emeet' in norm_key:
+                        clean_name = 'EMEET SmartCam C60E (Camera Speaker)'
+                    elif 'usb audio' in norm_key or 'usbaudio' in norm_key:
+                        clean_name = f'{clean_name} (USB Speaker)'
+                    elif 'realtek' in norm_key:
+                        clean_name = 'Realtek Audio Output'
+
+                    device_key = f"out_{dev_idx}_{clean_name.lower()}"
+                    if device_key in seen_keys:
+                        continue
+                    seen_keys.add(device_key)
+                    devices.append({
+                        "index": dev_idx,
+                        "name": clean_name,
+                        "raw_name": raw_name,
+                        "channels": dev.get('max_output_channels', 2),
+                        "default_samplerate": int(dev.get('default_samplerate') or 44100)
+                    })
+            except Exception as e:
+                logger.error(f"Error querying output sound devices: {e}")
+
+        # Linux ALSA output scan
+        if platform.system() == "Linux":
+            try:
+                out = subprocess.check_output(["aplay", "-l"], text=True, stderr=subprocess.DEVNULL, timeout=2)
+                for line in out.splitlines():
+                    if line.strip().startswith("card"):
+                        m = re.search(r"card\s+(\d+):\s*([^,]+),\s*device\s+(\d+):\s*([^\[]+)\[(.*?)\]", line)
+                        if m:
+                            c_idx = int(m.group(1))
+                            c_name = m.group(2).strip()
+                            d_idx = int(m.group(3))
+                            d_name = m.group(5).strip()
+                            devices.append({
+                                "index": f"plughw:{c_idx},{d_idx}",
+                                "name": f"{d_name} [hw:{c_idx},{d_idx}]",
+                                "raw_name": f"card {c_idx}: {c_name}, device {d_idx}: {d_name}",
+                                "channels": 2,
+                                "default_samplerate": 44100
+                            })
+            except Exception:
+                pass
+        return devices
+
+    def set_output_device(self, device_index: Optional[Union[int, str]]):
+        self.output_device = device_index
+        self.stop()
+
+    def start(self, sample_rate: int = 16000):
+        if self.is_active and self.sample_rate == sample_rate:
+            return
+
+        self.stop()
+        self.sample_rate = sample_rate
+        target_dev = self.output_device
+        if target_dev == "default" or target_dev is None or target_dev == "":
+            target_dev = None
+        elif isinstance(target_dev, str) and target_dev.isdigit():
+            target_dev = int(target_dev)
+
+        if sd is not None:
+            try:
+                self.stream = sd.RawOutputStream(
+                    samplerate=sample_rate,
+                    channels=1,
+                    dtype='int16',
+                    device=target_dev,
+                    latency='low'
+                )
+                self.stream.start()
+                self.is_active = True
+                logger.info(f"Speaker output stream started on {target_dev} @ {sample_rate}Hz")
+                return
+            except Exception as e:
+                logger.debug(f"sounddevice RawOutputStream start notice ({sample_rate}Hz, dev={target_dev}): {e}")
+
+        # Linux aplay fallback
+        if platform.system() == "Linux":
+            alsa_target = str(target_dev or "default")
+            if alsa_target.isdigit():
+                alsa_target = f"plughw:{alsa_target},0"
+            try:
+                cmd = ["aplay", "-D", alsa_target, "-r", str(sample_rate), "-c", "1", "-f", "S16_LE", "-t", "raw", "--buffer-size=1024"]
+                self._subprocess_playback = subprocess.Popen(
+                    cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                self.is_active = True
+                logger.info(f"Speaker playback started via aplay on {alsa_target} @ {sample_rate}Hz")
+                return
+            except Exception as e:
+                logger.error(f"aplay subprocess fallback failed: {e}")
+
+        self.is_active = True
+
+    def play_chunk(self, raw_bytes: bytes, client_sample_rate: int = 16000):
+        if not raw_bytes:
+            return
+
+        self.last_audio_time = time.time()
+        self.is_talking = True
+
+        # Calculate volume RMS of speech for visualizer
+        try:
+            arr = np.frombuffer(raw_bytes, dtype=np.int16)
+            if len(arr) > 0:
+                rms = np.sqrt(np.mean(arr.astype(float)**2))
+                self.current_volume_rms = min(100.0, (rms / 32767.0) * 400.0)
+        except Exception:
+            pass
+
+        if not self.is_active or self.sample_rate != client_sample_rate:
+            self.start(client_sample_rate)
+
+        # Output to sounddevice stream
+        if self.stream and self.is_active:
+            try:
+                self.stream.write(raw_bytes)
+                return
+            except Exception as e:
+                logger.debug(f"Speaker stream write error: {e}")
+
+        # Output to Linux aplay
+        if self._subprocess_playback and self._subprocess_playback.stdin:
+            try:
+                self._subprocess_playback.stdin.write(raw_bytes)
+                self._subprocess_playback.stdin.flush()
+            except Exception as e:
+                logger.debug(f"aplay stdin write error: {e}")
+
+    def flush(self):
+        self.is_talking = False
+        self.current_volume_rms = 0.0
+
+    def stop(self):
+        self.is_active = False
+        self.is_talking = False
+        self.current_volume_rms = 0.0
+        if self.stream:
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception:
+                pass
+            self.stream = None
+
+        if self._subprocess_playback:
+            try:
+                if self._subprocess_playback.stdin:
+                    self._subprocess_playback.stdin.close()
+                self._subprocess_playback.terminate()
+                self._subprocess_playback.wait(timeout=0.5)
+            except Exception:
+                pass
+            self._subprocess_playback = None
+
+
+audio_speaker = AudioSpeakerWorker()
+

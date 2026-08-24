@@ -5,6 +5,7 @@ import { CustomObjectTrackerModal } from './CustomObjectTrackerModal';
 import { CameraEditModal } from './CameraEditModal';
 import { MotionDetectionModal } from './MotionDetectionModal';
 import { ConfirmModal } from './ConfirmModal';
+import { useTalkToCamera } from '../hooks/useTalkToCamera';
 import {
   Play,
   Pause,
@@ -39,7 +40,8 @@ import {
   Activity,
   Scan,
   X,
-  Wifi
+  Wifi,
+  Radio
 } from 'lucide-react';
 
 interface MainPlayerProps {
@@ -119,6 +121,18 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
   const [contrast, setContrast] = useState(50);
   const [saturation, setSaturation] = useState(50);
   const [showAdjustmentsModal, setShowAdjustmentsModal] = useState(false);
+
+  // 2-Way Audio Talk to Camera Intercom Hook
+  const {
+    isTalking,
+    talkVolume,
+    speakerDevices,
+    activeSpeakerDevice,
+    startTalking,
+    stopTalking,
+    toggleTalking,
+    setSpeakerDevice,
+  } = useTalkToCamera({ onShowToast });
 
   // Camera Edit & Add Modal State
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
@@ -883,6 +897,29 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
             </button>
           )}
 
+          {/* 2-Way Audio Talk to Camera Intercom Button */}
+          <button
+            type="button"
+            onMouseDown={startTalking}
+            onMouseUp={stopTalking}
+            onTouchStart={startTalking}
+            onTouchEnd={stopTalking}
+            onClick={toggleTalking}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium border transition-all shrink-0 select-none ${
+              isTalking
+                ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-400 animate-pulse shadow-lg shadow-rose-600/30'
+                : isFloating
+                ? 'bg-black/80 hover:bg-black text-zinc-200 border-white/20 backdrop-blur-md shadow-lg'
+                : 'bg-[#18181c] hover:bg-[#222226] text-zinc-300 border-[#2c2c32]'
+            }`}
+            title={isTalking ? 'Currently Broadcasting Voice • Click/Release to Stop' : 'Hold or Click to Talk to Camera Speaker (2-Way Audio)'}
+          >
+            <Radio className={`h-3.5 w-3.5 ${isTalking ? 'text-white animate-spin' : 'text-emerald-400'}`} />
+            <span className="font-mono font-semibold">
+              {isTalking ? `Talking (${talkVolume}%)` : 'Talk'}
+            </span>
+          </button>
+
           {/* Mute / Audio with Volume Button */}
           <div className="relative shrink-0">
             <div className={`flex items-center rounded-lg border overflow-hidden ${
@@ -1355,6 +1392,35 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* 2-Way Audio Talk Active HUD Overlay Banner */}
+                {isTalking && (
+                  <div className="absolute bottom-16 sm:bottom-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none animate-in fade-in zoom-in-95 duration-150">
+                    <div className="bg-black/90 backdrop-blur-md border border-rose-500/80 px-3.5 py-1.5 rounded-full flex items-center gap-2 text-rose-300 font-mono text-xs shadow-2xl shadow-rose-900/50">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
+                      </span>
+                      <span className="font-bold tracking-wider uppercase text-[11px]">
+                        BROADCASTING TO CAMERA SPEAKER
+                      </span>
+                      {/* Audio Level Waveform Bars */}
+                      <div className="flex items-center gap-0.5 h-3 ml-1">
+                        {[1, 2, 3, 4, 5].map((barIdx) => {
+                          const active = talkVolume > barIdx * 18;
+                          return (
+                            <span
+                              key={barIdx}
+                              className={`w-0.5 rounded-full transition-all duration-75 ${
+                                active ? 'bg-rose-400 h-3' : 'bg-rose-900/60 h-1'
+                              }`}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1562,6 +1628,30 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                     className="w-full bg-[#18181b] hover:bg-[#202024] border border-[#2a2a30] rounded-lg pl-3 pr-8 py-2 text-zinc-200 text-xs outline-none focus:border-[#3B82F6] font-mono appearance-none transition-colors cursor-pointer"
                   >
                     {audioDevices.map((d: any) => (
+                      <option key={String(d.index)} value={String(d.index)}>{d.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400 pointer-events-none" />
+                </div>
+              </div>
+            )}
+
+            {/* 2-Way Intercom Camera Speaker Output Selection */}
+            {speakerDevices.length > 0 && (
+              <div className="pt-2 border-t border-[#222222] space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-zinc-400 font-mono">Camera Speaker Output (2-Way Talk):</span>
+                  {isTalking && (
+                    <span className="text-[9px] font-mono text-rose-400 animate-pulse font-semibold">● ACTIVE</span>
+                  )}
+                </div>
+                <div className="relative">
+                  <select
+                    value={activeSpeakerDevice !== null && activeSpeakerDevice !== undefined ? String(activeSpeakerDevice) : ''}
+                    onChange={(e) => setSpeakerDevice(e.target.value)}
+                    className="w-full bg-[#18181b] hover:bg-[#202024] border border-[#2a2a30] rounded-lg pl-3 pr-8 py-2 text-zinc-200 text-xs outline-none focus:border-[#3B82F6] font-mono appearance-none transition-colors cursor-pointer"
+                  >
+                    {speakerDevices.map((d: any) => (
                       <option key={String(d.index)} value={String(d.index)}>{d.name}</option>
                     ))}
                   </select>
