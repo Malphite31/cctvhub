@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { StreamStats, CameraDevice, CameraResolutionOption, TrackerSettings, CustomTracker, SystemTelemetry } from '../types';
 import { TrackerHUDOverlay } from './TrackerHUDOverlay';
 import { CustomObjectTrackerModal } from './CustomObjectTrackerModal';
@@ -93,7 +93,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
   onShowToast,
   userRole = 'admin',
   stats,
-  telemetry,
+  telemetry
 }) => {
   const isViewer = userRole === 'viewer';
   const [isPlaying, setIsPlaying] = useState(true);
@@ -104,6 +104,7 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showResMenu, setShowResMenu] = useState(false);
   const [selectedResolution, setSelectedResolution] = useState('1920x1080');
+  const [qualityMode, setQualityMode] = useState<'sd' | 'hd'>('sd');
   const [streamError, setStreamError] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -359,12 +360,15 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Sync selected resolution with active camera device
+  // Sync selected resolution and quality mode with active camera device
   useEffect(() => {
+    if (currentCam?.quality_mode) {
+      setQualityMode(currentCam.quality_mode);
+    }
     if (currentCam?.resolution) {
       setSelectedResolution(currentCam.resolution);
     }
-  }, [currentCam?.device, currentCam?.resolution]);
+  }, [currentCam?.device, currentCam?.quality_mode, currentCam?.resolution]);
 
   // Fetch custom trackers for active camera
   const fetchCustomTrackers = async () => {
@@ -540,6 +544,36 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     }
   };
 
+  const handleToggleQualityMode = async (targetMode?: 'sd' | 'hd') => {
+    const nextMode = targetMode || (qualityMode === 'hd' ? 'sd' : 'hd');
+    setQualityMode(nextMode);
+    const targetRes = nextMode === 'hd' ? '1920x1080' : '854x480';
+    setSelectedResolution(targetRes);
+
+    try {
+      await fetch('/api/stream/quality', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dev: activeDevice,
+          mode: nextMode
+        })
+      });
+      // Force instant refresh of image stream
+      setStreamKey(Date.now());
+      if (onShowToast) {
+        onShowToast(
+          nextMode === 'hd'
+            ? 'HD Mode Activated • 1080p Crystal Clear Stream'
+            : 'SD Mode Activated • 480p Low Bandwidth (Data Saver)'
+        );
+      }
+      if (onRefreshDevices) onRefreshDevices();
+    } catch {
+      if (onShowToast) onShowToast('Failed to switch transmission mode', true);
+    }
+  };
+
   const handleResolutionChange = async (res: CameraResolutionOption | string) => {
     setShowResMenu(false);
     let w = 1920, h = 1080, fpsVal = 60, resStr = '1920x1080', label = '';
@@ -559,16 +593,19 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
         h = parseInt(parts[1], 10) || 1080;
       }
     }
+
+    const determinedMode: 'sd' | 'hd' = (w <= 854 && h <= 480) ? 'sd' : 'hd';
     setSelectedResolution(resStr);
+    setQualityMode(determinedMode);
 
     try {
-      await fetch(`/api/stream/resolution?dev=${encodeURIComponent(activeDevice)}&width=${w}&height=${h}&fps=${fpsVal}`, {
+      await fetch(`/api/stream/resolution?dev=${encodeURIComponent(activeDevice)}&width=${w}&height=${h}&fps=${fpsVal}&mode=${determinedMode}`, {
         method: 'POST',
       });
       // Reconnect live stream with new resolution
       setStreamKey(Date.now());
       if (onShowToast) {
-        onShowToast(`Stream resolution updated: ${label || `${w}x${h}`} @ ${fpsVal} FPS`);
+        onShowToast(`Stream resolution updated: ${label || `${w}x${h}`} (${determinedMode.toUpperCase()})`);
       }
       if (onRefreshDevices) onRefreshDevices();
     } catch (e) {
@@ -674,19 +711,38 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
     }
   };
 
-  const supportedResolutions: CameraResolutionOption[] = (currentCam?.supported_resolutions && currentCam.supported_resolutions.length > 0)
-    ? currentCam.supported_resolutions
-    : (currentCam?.resolutions && currentCam.resolutions.length > 0)
-      ? currentCam.resolutions.map(r => ({
-          label: r,
-          value: r.includes('(') ? (r.match(/\((.*?)\)/)?.[1] || r) : r,
-          fps: `${currentCam.fps || 60} FPS`
-        }))
-      : [
-          { label: '1080p FHD (1920x1080)', value: '1920x1080', fps: '60 FPS', width: 1920, height: 1080 },
-          { label: '720p HD (1280x720)', value: '1280x720', fps: '60 FPS', width: 1280, height: 720 },
-          { label: 'VGA (640x480)', value: '640x480', fps: '60 FPS', width: 640, height: 480 }
-        ];
+  const supportedResolutions: CameraResolutionOption[] = useMemo(() => {
+    const standard: CameraResolutionOption[] = [
+      { label: '1080p FHD • Crystal Clear', value: '1920x1080', fps: '60 FPS', width: 1920, height: 1080, tier: 'hd' },
+      { label: '720p HD • High Definition', value: '1280x720', fps: '60 FPS', width: 1280, height: 720, tier: 'hd' },
+      { label: '480p SD • Data Saver', value: '854x480', fps: '60 FPS', width: 854, height: 480, tier: 'sd' },
+      { label: '360p Fast • Low Bandwidth', value: '640x360', fps: '60 FPS', width: 640, height: 360, tier: 'sd' },
+      { label: 'VGA Standard (640x480)', value: '640x480', fps: '60 FPS', width: 640, height: 480, tier: 'sd' },
+    ];
+
+    const hardware: CameraResolutionOption[] = (currentCam?.supported_resolutions && currentCam.supported_resolutions.length > 0)
+      ? currentCam.supported_resolutions
+      : (currentCam?.resolutions && currentCam.resolutions.length > 0)
+        ? currentCam.resolutions.map(r => {
+            const val = r.includes('(') ? (r.match(/\((.*?)\)/)?.[1] || r) : r;
+            const wVal = parseInt(val.split('x')[0], 10) || 1920;
+            return {
+              label: r,
+              value: val,
+              fps: `${currentCam.fps || 60} FPS`,
+              tier: (wVal <= 854 ? 'sd' : 'hd') as 'sd' | 'hd'
+            };
+          })
+        : [];
+
+    const list = [...hardware];
+    for (const s of standard) {
+      if (!list.some(item => item.value === s.value)) {
+        list.push(s);
+      }
+    }
+    return list;
+  }, [currentCam?.supported_resolutions, currentCam?.resolutions, currentCam?.fps]);
 
   const renderControlsDock = (isFloating = false) => {
     return (
@@ -710,6 +766,25 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
           >
             {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             <span className="inline">{isPlaying ? 'Pause' : 'Play'}</span>
+          </button>
+
+          {/* HD / SD Transmission Mode Quick Switch */}
+          <button
+            type="button"
+            onClick={() => handleToggleQualityMode()}
+            className={`flex items-center gap-1 px-2 py-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-mono font-semibold border transition-colors shrink-0 ${
+              qualityMode === 'hd'
+                ? isFloating
+                  ? 'bg-emerald-500/30 text-emerald-300 border-emerald-500/60 backdrop-blur-md shadow-lg'
+                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30'
+                : isFloating
+                ? 'bg-amber-500/30 text-amber-300 border-amber-500/60 backdrop-blur-md shadow-lg'
+                : 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30'
+            }`}
+            title={qualityMode === 'hd' ? 'HD Mode Active (1080p). Click to switch to SD Data Saver Mode' : 'SD Mode Active (Low Bandwidth). Click to switch to HD Mode'}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${qualityMode === 'hd' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+            <span>{qualityMode.toUpperCase()}</span>
           </button>
 
           {/* Quick Snapshot */}
@@ -904,6 +979,23 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
             {hasCameras ? currentCam.name : 'No Cameras Configured'}
           </h3>
 
+          {/* Interactive HD / SD Mode Toggle Badge */}
+          {hasCameras && (
+            <button
+              type="button"
+              onClick={() => handleToggleQualityMode()}
+              className={`flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded border transition-all shrink-0 ${
+                qualityMode === 'hd'
+                  ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/50 shadow-xs'
+                  : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/50 shadow-xs'
+              }`}
+              title={qualityMode === 'hd' ? 'Currently in HD Mode (1080p). Click to switch to SD Low Bandwidth Mode' : 'Currently in SD Mode (480p Low Bandwidth). Click to switch to HD Mode'}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${qualityMode === 'hd' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span>{qualityMode === 'hd' ? 'HD MODE' : 'SD (SAVER)'}</span>
+            </button>
+          )}
+
           {/* Interactive Resolution Dropdown Badge */}
           {hasCameras && (
             <div className="relative shrink-0" ref={resMenuRef}>
@@ -920,14 +1012,42 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
               </button>
 
               {showResMenu && (
-                <div className="absolute left-0 mt-1.5 w-48 sm:w-56 max-w-[calc(100vw-36px)] rounded-lg border border-[#222222] bg-[#161616]/95 backdrop-blur-md p-1.5 shadow-2xl z-50 space-y-0.5 font-mono text-xs animate-in fade-in zoom-in-95 duration-100">
-                  <div className="px-2 py-1 text-[9px] text-zinc-500 uppercase border-b border-[#222222] flex items-center justify-between">
-                    <span>Hardware Resolutions</span>
-                    <span className="text-[8px] text-[#3B82F6]">Live Probed</span>
+                <div className="absolute left-0 mt-1.5 w-56 sm:w-64 max-w-[calc(100vw-36px)] rounded-lg border border-[#222222] bg-[#161616]/95 backdrop-blur-md p-1.5 shadow-2xl z-50 space-y-1 font-mono text-xs animate-in fade-in zoom-in-95 duration-100">
+                  {/* Quick Bandwidth Switcher Header */}
+                  <div className="p-1 rounded bg-[#111114] border border-[#222226] flex items-center justify-between gap-1 mb-1">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleQualityMode('sd')}
+                      className={`flex-1 py-1 px-1.5 rounded text-[9px] font-bold flex items-center justify-center gap-1 transition-all ${
+                        qualityMode === 'sd'
+                          ? 'bg-amber-500 text-black shadow-xs'
+                          : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                      }`}
+                    >
+                      <span>SD (Low Data)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleQualityMode('hd')}
+                      className={`flex-1 py-1 px-1.5 rounded text-[9px] font-bold flex items-center justify-center gap-1 transition-all ${
+                        qualityMode === 'hd'
+                          ? 'bg-emerald-500 text-black shadow-xs'
+                          : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                      }`}
+                    >
+                      <span>HD Mode</span>
+                    </button>
                   </div>
+
+                  <div className="px-2 py-0.5 text-[9px] text-zinc-500 uppercase flex items-center justify-between">
+                    <span>Transmission Presets</span>
+                    <span className="text-[8px] text-[#3B82F6]">Instant Switch</span>
+                  </div>
+
                   {supportedResolutions.map((res) => {
                     const activeRes = (selectedResolution || currentCam?.resolution || '').split(' ')[0].trim();
                     const isSelected = res.value.trim() === activeRes || res.label.trim() === activeRes;
+                    const isHd = (res.width && res.width >= 1280) || res.tier === 'hd';
                     return (
                       <button
                         key={res.value}
@@ -938,7 +1058,12 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
                             : 'text-zinc-300 hover:bg-[#222222]'
                         }`}
                       >
-                        <span className="truncate">{res.label}</span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className={`text-[8px] px-1 py-0.2 rounded font-bold ${isHd ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>
+                            {isHd ? 'HD' : 'SD'}
+                          </span>
+                          <span className="truncate">{res.label}</span>
+                        </div>
                         <span className={`text-[9px] shrink-0 ml-1.5 ${isSelected ? 'text-white' : 'text-zinc-500'}`}>{res.fps}</span>
                       </button>
                     );
@@ -1211,10 +1336,14 @@ export const MainPlayer: React.FC<MainPlayerProps> = ({
 
                   {/* Right Badges: Transmission Speed & Timecode */}
                   <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto">
-                    {/* Live Transmission Speed Overlay */}
+                    {/* Live Transmission Speed & Quality Mode Overlay */}
                     <div className="bg-black/80 backdrop-blur-xs px-1.5 sm:px-2 py-0.5 rounded-md border border-[#222222] flex items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[10px] font-mono text-zinc-300 shadow-sm shrink-0">
                       <Wifi className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-emerald-400 animate-pulse shrink-0" />
                       <span className="text-emerald-400 font-bold tracking-tight">{liveSpeedMbps}</span>
+                      <span className="text-zinc-600">•</span>
+                      <span className={`font-bold ${qualityMode === 'hd' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        {qualityMode.toUpperCase()}
+                      </span>
                       <span className="text-zinc-600 hidden sm:inline">•</span>
                       <span className="text-zinc-300 font-semibold hidden sm:inline">{currentCam?.fps || stats?.fps || 60} FPS</span>
                     </div>

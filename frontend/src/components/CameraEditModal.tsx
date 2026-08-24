@@ -30,9 +30,11 @@ interface HardwareDevice {
 
 const RESOLUTION_PRESETS = [
   { label: '1080p FHD (1920x1080)', value: '1920x1080', fps: 60 },
-  { label: '4K UHD (3840x2160)', value: '3840x2160', fps: 30 },
   { label: '720p HD (1280x720)', value: '1280x720', fps: 60 },
-  { label: 'VGA (640x480)', value: '640x480', fps: 60 },
+  { label: '480p SD • Data Saver (854x480)', value: '854x480', fps: 60 },
+  { label: '360p Fast • Low Bandwidth (640x360)', value: '640x360', fps: 60 },
+  { label: 'VGA Standard (640x480)', value: '640x480', fps: 60 },
+  { label: '4K UHD (3840x2160)', value: '3840x2160', fps: 30 },
 ];
 
 const ZONE_PRESETS = [

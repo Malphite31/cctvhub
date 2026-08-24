@@ -65,6 +65,7 @@ export interface CameraResolutionOption {
   fps: string;
   width?: number;
   height?: number;
+  tier?: 'sd' | 'hd';
 }
 
 export interface CameraDevice {
@@ -75,6 +76,7 @@ export interface CameraDevice {
   resolutions?: string[];
   supported_resolutions?: CameraResolutionOption[];
   fps?: number;
+  quality_mode?: 'sd' | 'hd';
   zone?: string;
   source?: string;
   is_online?: boolean;

@@ -25,6 +25,8 @@ async def get_stream_config():
         "active_device": str(active_id),
         "fps": worker.actual_fps,
         "resolution": worker.resolution,
+        "quality_mode": getattr(worker, "quality_mode", "sd"),
+        "jpeg_quality": getattr(worker, "jpeg_quality", 52),
         "audio_enabled": True,
         "active_audio_device": audio_worker.device_index,
         "sample_rate": audio_worker.sample_rate
@@ -40,20 +42,47 @@ def switch_camera(device: str = Query(..., description="Camera device index (e.g
     return {
         "status": "success",
         "active_device": str(device),
+        "quality_mode": getattr(worker, "quality_mode", "sd"),
         "resolution": worker.resolution,
         "fps": worker.actual_fps
     }
+
+class QualityPayload(BaseModel):
+    dev: Optional[str] = None
+    mode: str = "sd" # "sd" (low bandwidth 480p) or "hd" (high definition 1080p)
+    resolution: Optional[str] = None
+
+@router.get("/quality")
+def get_stream_quality(dev: Optional[str] = Query(None, description="Camera device index")):
+    """Get active transmission quality mode (SD/HD), resolution, and JPEG quality."""
+    target_dev = str(dev) if dev is not None else camera_manager.get_active_device()
+    worker = camera_manager.get_worker(target_dev)
+    return {
+        "device": target_dev,
+        "quality_mode": getattr(worker, "quality_mode", "sd"),
+        "resolution": worker.resolution,
+        "jpeg_quality": getattr(worker, "jpeg_quality", 52),
+        "fps": worker.actual_fps or worker.requested_fps
+    }
+
+@router.post("/quality")
+def set_stream_quality(payload: QualityPayload):
+    """Switch stream transmission quality mode (SD / HD) in real-time to save bandwidth."""
+    target_dev = str(payload.dev) if payload.dev is not None else camera_manager.get_active_device()
+    worker = camera_manager.get_worker(target_dev)
+    return worker.set_quality_mode(payload.mode)
 
 @router.post("/resolution")
 def set_resolution(
     dev: str = Query("0", description="Camera device index"),
     width: int = Query(1920, description="Width"),
     height: int = Query(1080, description="Height"),
-    fps: int = Query(60, description="Target FPS")
+    fps: int = Query(60, description="Target FPS"),
+    mode: Optional[str] = Query(None, description="Quality mode (sd/hd)")
 ):
-    """Set camera resolution and framerate."""
+    """Set camera resolution and framerate in real-time."""
     worker = camera_manager.get_worker(dev)
-    return worker.set_resolution(width, height, fps)
+    return worker.set_resolution(width, height, fps, quality_mode=mode)
 
 from typing import Optional
 from pydantic import BaseModel

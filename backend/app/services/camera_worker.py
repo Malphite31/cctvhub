@@ -42,6 +42,24 @@ class CameraWorker:
         self.pan_y = 0.0
         self._need_reconnect = False
 
+        # Stream transmission quality mode ("sd" vs "hd") and dynamic output dimensions
+        try:
+            from ..core.database import get_camera_quality_mode
+            self.quality_mode = get_camera_quality_mode(str(self.device))
+        except Exception:
+            self.quality_mode = "sd"
+
+        if self.quality_mode == "sd":
+            self.jpeg_quality = 52
+            self.output_width = 854
+            self.output_height = 480
+            self.resolution = "854x480"
+        else:
+            self.jpeg_quality = 82
+            self.output_width = width
+            self.output_height = height
+            self.resolution = f"{width}x{height}"
+
         # Load persisted camera adjustments from DB
         try:
             from ..core.database import get_camera_adjustments
@@ -125,46 +143,84 @@ class CameraWorker:
 
         return cap
 
-    def set_resolution(self, width: int, height: int, fps: int = 60) -> Dict[str, Any]:
-        """Dynamically switches resolution and FPS on the active camera seamlessly."""
+    def set_quality_mode(self, mode: str) -> Dict[str, Any]:
+        """Switch between 'sd' (low bandwidth 480p, quality 52) and 'hd' (1080p high definition, quality 82)."""
+        clean_mode = "hd" if str(mode).lower().strip() == "hd" else "sd"
+        self.quality_mode = clean_mode
+
+        if clean_mode == "sd":
+            self.jpeg_quality = 52
+            self.output_width = 854
+            self.output_height = 480
+            self.resolution = "854x480"
+        else:
+            self.jpeg_quality = 82
+            self.output_width = self.requested_width if self.requested_width >= 1280 else 1920
+            self.output_height = self.requested_height if self.requested_height >= 720 else 1080
+            self.resolution = f"{self.output_width}x{self.output_height}"
+
+        # Persist to database
+        try:
+            from ..core.database import set_camera_quality_mode, update_configured_camera
+            set_camera_quality_mode(str(self.device), clean_mode)
+            update_configured_camera(str(self.device), resolution=self.resolution)
+        except Exception:
+            pass
+
+        logger.info(f"Dev {self.device} quality mode switched to {clean_mode.upper()} ({self.resolution} @ JPEG quality {self.jpeg_quality})")
+        return {
+            "status": "success",
+            "device": str(self.device),
+            "quality_mode": self.quality_mode,
+            "resolution": self.resolution,
+            "jpeg_quality": self.jpeg_quality,
+            "fps": self.actual_fps or self.requested_fps
+        }
+
+    def set_resolution(self, width: int, height: int, fps: int = 60, quality_mode: Optional[str] = None) -> Dict[str, Any]:
+        """Dynamically switches resolution and FPS on the active camera seamlessly in real-time."""
         logger.info(f"Changing resolution for Dev {self.device} to {width}x{height} @ {fps}fps")
+        self.output_width = width
+        self.output_height = height
         self.requested_width = width
         self.requested_height = height
         self.requested_fps = fps
         self.resolution = f"{width}x{height}"
 
-        # 1. First attempt dynamic hardware property switch without tearing down the open device
-        applied_live = False
+        if quality_mode:
+            self.quality_mode = "hd" if quality_mode.lower().strip() == "hd" else "sd"
+            self.jpeg_quality = 52 if self.quality_mode == "sd" else 82
+        elif width <= 854 and height <= 480:
+            self.quality_mode = "sd"
+            self.jpeg_quality = 52
+        else:
+            self.quality_mode = "hd"
+            self.jpeg_quality = 82
+
+        # 1. Attempt dynamic hardware property switch on active VideoCapture if supported
         if self.cap and self.cap.isOpened():
             try:
                 self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
                 self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
                 self.cap.set(cv2.CAP_PROP_FPS, fps)
-                actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                if actual_w > 0 and actual_h > 0:
-                    self.resolution = f"{actual_w}x{actual_h}"
-                    applied_live = True
             except Exception:
                 pass
-
-        # 2. If the driver requires re-negotiating V4L2/DSHOW formats, schedule graceful re-open
-        if not applied_live:
-            self._need_reconnect = True
 
         if not self.is_running:
             self.start()
 
         # Update configured database camera if exists
         try:
-            from ..core.database import update_configured_camera
+            from ..core.database import update_configured_camera, set_camera_quality_mode
             update_configured_camera(str(self.device), resolution=self.resolution, fps=fps)
+            set_camera_quality_mode(str(self.device), self.quality_mode)
         except Exception:
             pass
 
         return {
             "status": "success",
             "device": str(self.device),
+            "quality_mode": self.quality_mode,
             "resolution": self.resolution,
             "fps": self.requested_fps
         }
@@ -318,8 +374,19 @@ class CameraWorker:
                     # Pass through Vision Tracker for bounding boxes, identity tags & HUD markers
                     annotated_frame, detections = vision_tracker.process_frame(frame, camera_id=str(self.device))
 
-                    # Encode to JPEG with efficient quality 75
-                    _, buf = cv2.imencode('.jpg', annotated_frame, encode_param)
+                    # Real-time resolution rescaling for seamless output dimensions
+                    out_w = getattr(self, "output_width", None) or self.requested_width
+                    out_h = getattr(self, "output_height", None) or self.requested_height
+                    if out_w > 0 and out_h > 0 and (annotated_frame.shape[1] != out_w or annotated_frame.shape[0] != out_h):
+                        annotated_frame = cv2.resize(
+                            annotated_frame,
+                            (out_w, out_h),
+                            interpolation=cv2.INTER_AREA if annotated_frame.shape[1] > out_w else cv2.INTER_LINEAR
+                        )
+
+                    # Dynamic JPEG encoding with quality matching current transmission mode (SD vs HD)
+                    dynamic_param = [int(cv2.IMWRITE_JPEG_QUALITY), getattr(self, "jpeg_quality", 55)]
+                    _, buf = cv2.imencode('.jpg', annotated_frame, dynamic_param)
                     with self.lock:
                         self.latest_raw_frame = frame
                         self.latest_frame = annotated_frame
@@ -756,10 +823,19 @@ class MultiCameraManager:
             source_str = cam.get("source", dev_str)
             res = cam.get("resolution", "1920x1080")
             fps = cam.get("fps", 60)
+            quality_mode = "sd"
+
             if dev_str in self.workers:
                 w = self.workers[dev_str]
                 res = w.resolution or res
                 fps = w.actual_fps or fps
+                quality_mode = getattr(w, "quality_mode", "sd")
+            else:
+                try:
+                    from ..core.database import get_camera_quality_mode
+                    quality_mode = get_camera_quality_mode(dev_str)
+                except Exception:
+                    pass
 
             probed = self.probe_camera_resolutions(source_str)
 
@@ -769,6 +845,7 @@ class MultiCameraManager:
                 "source": source_str,
                 "resolution": res,
                 "fps": fps,
+                "quality_mode": quality_mode,
                 "zone": cam.get("zone", "Main Area"),
                 "is_online": bool(cam.get("is_online", 1)),
                 "supported_resolutions": probed,

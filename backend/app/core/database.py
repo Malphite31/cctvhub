@@ -522,6 +522,30 @@ def set_camera_adjustments(camera_id: str, adjustments: Dict[str, Any]) -> Dict[
         conn.commit()
     return current
 
+def get_camera_quality_mode(camera_id: str) -> str:
+    clean_id = str(camera_id).strip()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM system_config WHERE key = ?", (f"camera_quality_{clean_id}",))
+        row = cursor.fetchone()
+        if row and row[0]:
+            mode = str(row[0]).lower().strip()
+            if mode in ["sd", "hd"]:
+                return mode
+    return "sd" # Default to low bandwidth SD mode to save bandwidth
+
+def set_camera_quality_mode(camera_id: str, mode: str) -> str:
+    clean_id = str(camera_id).strip()
+    clean_mode = "hd" if str(mode).lower().strip() == "hd" else "sd"
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)",
+            (f"camera_quality_{clean_id}", clean_mode)
+        )
+        conn.commit()
+    return clean_mode
+
 
 # --- User Authentication & Management Database Operations ---
 
